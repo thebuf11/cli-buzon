@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "cuenta": {
+    "proveedor": "gmail-api",
+    "servidor": "imap.gmail.com",
+    "puerto": 993,
+    "usuario_env": "GMAIL_USUARIO",
+    "password_env": "GMAIL_APP_PASSWORD",
+    "carpeta_entrada": "INBOX",
+    "carpeta_spam": "[Gmail]/Spam",
+    "carpeta_papelera": "[Gmail]/Trash",
+    "credenciales_api": "credentials.json",
+    "token_api": "token.json"
+  },
+  "ia": {
+    "url_env": "IA_API_URL",
+    "clave_env": "IA_API_KEY",
+    "modelo_env": "IA_MODELO",
+    "modelo_por_defecto": "llama3"
+  },
+  "acciones": [
+    {
+      "nombre": "resumen-24h",
+      "descripcion": "Resume los correos importantes de las últimas 24 horas",
+      "tipo": "resumen-ia",
+      "horas": 24
+    },
+    {
+      "nombre": "revisar-24h",
+      "descripcion": "Revisa uno a uno los correos de las últimas 24 h y borra los que no interesen",
+      "tipo": "revisar",
+      "carpeta": "entrada",
+      "horas": 24
+    },
+    {
+      "nombre": "listar-spam",
+      "descripcion": "Lista todos los mensajes de la carpeta de spam",
+      "tipo": "listar",
+      "carpeta": "spam"
+    },
+    {
+      "nombre": "limpiar-spam",
+      "descripcion": "Mueve toda la bandeja de spam a la papelera de Gmail",
+      "tipo": "mover-papelera",
+      "carpeta": "spam",
+      "confirmar": true
+    },
+    {
+      "nombre": "guardar-resumen",
+      "descripcion": "Guarda el resumen de las últimas 24 horas en un fichero Markdown",
+      "tipo": "exportar",
+      "horas": 24,
+      "destino": "~/resumenes"
+    }
+  ]
+}

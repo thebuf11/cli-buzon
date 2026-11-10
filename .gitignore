@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────
+# SECRETOS: NUNCA subir a git (dan acceso a tu Gmail)
+# ─────────────────────────────────────────────────────────────
+# Contraseña de aplicación de Gmail y claves de la IA
+.env
+.env.*
+!.env.example
+
+# Cliente OAuth de Google Cloud (también el nombre original al descargarlo)
+credentials.json
+credentials*.json
+client_secret*.json
+
+# Sesión de Gmail guardada tras el primer inicio de sesión
+token.json
+token*.json
+
+# Otros formatos típicos de claves
+*.pem
+*.key
+*.p12
+
+# Resúmenes generados (contienen remitentes y asuntos de tus correos)
+resumenes/
+
+# ─────────────────────────────────────────────────────────────
+# Entornos y cachés de Python
+# ─────────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Herramientas locales de asistentes / editores
+.omc/
+.claude/
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,57 @@
+import json
+
+from typer.testing import CliRunner
+
+from buzon.cli import app
+
+runner = CliRunner()
+
+
+def salida_completa(resultado):
+    return resultado.output + (getattr(resultado, "stderr", "") or "")
+
+
+def test_version():
+    resultado = runner.invoke(app, ["version"])
+    assert resultado.exit_code == 0
+    assert "buzon" in resultado.output
+
+
+def test_validar_correcto(tmp_path):
+    ruta = tmp_path / "acciones.json"
+    ruta.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "acciones": [
+                    {"nombre": "listar-spam", "descripcion": "Spam", "tipo": "listar"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    resultado = runner.invoke(app, ["--config", str(ruta), "validar"])
+    assert resultado.exit_code == 0
+    assert "válido" in resultado.output
+
+
+def test_validar_incorrecto(tmp_path):
+    ruta = tmp_path / "acciones.json"
+    ruta.write_text("{ roto", encoding="utf-8")
+    resultado = runner.invoke(app, ["--config", str(ruta), "validar"])
+    assert resultado.exit_code == 3
+    assert "JSON mal formado" in salida_completa(resultado)
+
+
+def test_config_inexistente(tmp_path):
+    resultado = runner.invoke(app, ["--config", str(tmp_path / "no-existe.json"), "acciones"])
+    assert resultado.exit_code == 3
+    assert "No existe" in salida_completa(resultado)
+
+
+def test_funciona_desde_cualquier_carpeta(tmp_path, monkeypatch):
+    monkeypatch.delenv("BUZON_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+    resultado = runner.invoke(app, ["validar"])
+    assert resultado.exit_code == 0
+    assert "acciones.json" in resultado.output
