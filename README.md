@@ -1,5 +1,7 @@
 # buzon · CLI de Gmail
 
+[![tests](https://github.com/thebuf11/cli-buzon/actions/workflows/tests.yml/badge.svg)](https://github.com/thebuf11/cli-buzon/actions/workflows/tests.yml)
+
 Herramienta de terminal que, con **una sola orden**, te dice qué correos
 importantes has recibido en las **últimas 24 horas**, te enseña el **spam** y,
 si dices que sí, mueve toda la bandeja de spam a la papelera de Gmail.
@@ -418,6 +420,6 @@ Documentación del diseño:
 - [x] Confirmaciones `[s/N]` y errores sin traceback, también sin teclado
 - [x] Configuración de OpenCode: permisos, skill, `/nueva-accion` y subagente revisor
 - [x] Revisión de código y corrección de sus hallazgos (ver `docs/prompts.md`)
-- [ ] Tests del cliente IMAP sin red y con credenciales malas (ya los tiene la API de Gmail)
-- [ ] GitHub Actions en Ubuntu, Windows y macOS
-- [ ] Release v1.0 con changelog
+- [x] Tests del cliente IMAP sin red y con credenciales malas
+- [x] GitHub Actions en Ubuntu, Windows y macOS
+- [x] Release v1.0.0 con [CHANGELOG](CHANGELOG.md)
