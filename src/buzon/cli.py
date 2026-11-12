@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -29,7 +30,7 @@ from .config import (
 from .errores import BuzonError, ConfigError, SinRedError
 from .ia import ProveedorIA
 from .motor import Motor
-from .salida import LIMITE_FILAS, mostrar_correos
+from .salida import LIMITE_FILAS, confirmar, mostrar_correos
 
 app = typer.Typer(
     name="buzon",
@@ -73,45 +74,66 @@ def _cargar(ruta: Path) -> Configuracion:
         raise typer.Exit(3) from exc
 
 
+def _sin_teclado(exc: BaseException) -> bool:
+    """click convierte en Abort tanto Ctrl+C como el fin de la entrada (EOFError).
+
+    El segundo caso significa que no hay nadie al teclado: salida a una
+    tubería, un script o el chat de un agente.
+    """
+    if isinstance(exc, KeyboardInterrupt):
+        return False
+    return isinstance(exc.__context__, EOFError) or not sys.stdin.isatty()
+
+
+@contextmanager
+def _errores_controlados(pista_sin_teclado: str = "o añade --si para que no pregunte"):
+    """Traduce los errores previsibles a un mensaje y código 1, nunca a un traceback."""
+    try:
+        yield
+    except BuzonError as exc:
+        error.print(f"[red]Error:[/red] {escape(str(exc))}")
+        raise typer.Exit(1) from exc
+    except (KeyboardInterrupt, typer.Abort) as exc:
+        if _sin_teclado(exc):
+            error.print(
+                "\n[yellow]Esta orden necesita que respondas por teclado y aquí no hay teclado "
+                "(salida a una tubería, un script o un chat). Ábrela en una terminal "
+                f"(PowerShell o Windows Terminal) {pista_sin_teclado}.[/yellow]"
+            )
+        else:
+            error.print("\n[yellow]Interrumpido por el usuario. No se ha borrado nada más.[/yellow]")
+        raise typer.Exit(1) from None
+
+
 def _flujo_por_defecto(config: Configuracion) -> int:
     """Lo que pasa al escribir solo ``buzon``."""
     nombres = {accion.nombre for accion in config.acciones}
-    with Motor(config, consola) as motor:
-        try:
-            if "resumen-24h" in nombres:
-                motor.ejecutar("resumen-24h")
-            else:
-                consola.print("[yellow]No hay una acción «resumen-24h» en acciones.json.[/yellow]")
+    with Motor(config, consola) as motor, _errores_controlados():
+        if "resumen-24h" in nombres:
+            motor.ejecutar("resumen-24h")
+        else:
+            consola.print("[yellow]No hay una acción «resumen-24h» en acciones.json.[/yellow]")
 
-            if "listar-spam" not in nombres or "limpiar-spam" not in nombres:
-                consola.print(
-                    "[yellow]Añade «listar-spam» y «limpiar-spam» para completar el flujo.[/yellow]"
-                )
-                return 0
-
-            accion_spam = config.accion("listar-spam")
-            carpeta = config.cuenta.resolver_carpeta(accion_spam.carpeta)
-            correos = motor.cliente().listar(carpeta, horas=None)
-            if not correos:
-                consola.print("[green]La bandeja de spam ya está vacía.[/green]")
-                return 0
-
-            consola.print(f"\n[bold]Spam: {len(correos)} mensajes[/bold]")
-            mostrar_correos(consola, correos, carpeta, LIMITE_FILAS)
-            if typer.confirm(
-                f"¿Eliminar TODA la bandeja de spam ({len(correos)} mensajes)?",
-                default=False,
-            ):
-                return motor.ejecutar("limpiar-spam", si=True)
-
-            consola.print("No se ha borrado nada.")
+        if "listar-spam" not in nombres or "limpiar-spam" not in nombres:
+            consola.print(
+                "[yellow]Añade «listar-spam» y «limpiar-spam» para completar el flujo.[/yellow]"
+            )
             return 0
-        except BuzonError as exc:
-            error.print(f"[red]Error:[/red] {escape(str(exc))}")
-            return 1
-        except KeyboardInterrupt:
-            error.print("\n[yellow]Interrumpido por el usuario.[/yellow]")
-            return 1
+
+        accion_spam = config.accion("listar-spam")
+        carpeta = config.cuenta.resolver_carpeta(accion_spam.carpeta)
+        correos = motor.cliente().listar(carpeta, horas=None)
+        if not correos:
+            consola.print("[green]La bandeja de spam ya está vacía.[/green]")
+            return 0
+
+        consola.print(f"\n[bold]Spam: {len(correos)} mensajes[/bold]")
+        mostrar_correos(consola, correos, carpeta, LIMITE_FILAS)
+        if confirmar(f"¿Eliminar TODA la bandeja de spam ({len(correos)} mensajes)?"):
+            return motor.ejecutar("limpiar-spam", si=True)
+
+        consola.print("No se ha borrado nada.")
+        return 0
 
 
 def _origen(config: Configuracion) -> str:
@@ -263,15 +285,8 @@ def listar(
     destino = config.cuenta.resolver_carpeta(carpeta)
     ventana = horas if horas > 0 else None
 
-    with Motor(config, consola) as motor:
-        try:
-            correos = motor.cliente().listar(destino, horas=ventana)
-        except BuzonError as exc:
-            error.print(f"[red]Error:[/red] {escape(str(exc))}")
-            raise typer.Exit(1) from exc
-        except KeyboardInterrupt:
-            error.print("\n[yellow]Interrumpido por el usuario.[/yellow]")
-            raise typer.Exit(1) from None
+    with Motor(config, consola) as motor, _errores_controlados():
+        correos = motor.cliente().listar(destino, horas=ventana)
 
     titulo = f"{destino} · todo" if ventana is None else f"{destino} · últimas {ventana} h"
     mostrar_correos(consola, correos, titulo)
@@ -293,25 +308,9 @@ def revisar(
         horas=horas if horas > 0 else None,
         carpeta=carpeta,
     )
-    with Motor(config, consola) as motor:
-        try:
-            codigo = motor.ejecutar_definicion(definicion, simular=simular)
-        except BuzonError as exc:
-            error.print(f"[red]Error:[/red] {escape(str(exc))}")
-            raise typer.Exit(1) from exc
-        except (KeyboardInterrupt, typer.Abort) as exc:
-            # click convierte en Abort tanto Ctrl+C como el fin de la entrada (EOFError);
-            # el segundo caso significa que no hay teclado (tubería, chat…).
-            sin_teclado = isinstance(exc.__context__, EOFError) or not sys.stdin.isatty()
-            if sin_teclado:
-                error.print(
-                    "\n[yellow]«revisar» necesita que escribas órdenes y aquí no hay teclado "
-                    "(salida a una tubería o al chat). Ábrelo en una terminal: PowerShell o "
-                    "Windows Terminal.[/yellow]"
-                )
-            else:
-                error.print("\n[yellow]Interrumpido por el usuario.[/yellow]")
-            raise typer.Exit(1) from None
+    # «revisar» no tiene --si: es interactivo por naturaleza.
+    with Motor(config, consola) as motor, _errores_controlados("para escribir las órdenes"):
+        codigo = motor.ejecutar_definicion(definicion, simular=simular)
 
     raise typer.Exit(codigo)
 
@@ -325,15 +324,8 @@ def ejecutar(
 ) -> None:
     """Ejecuta una acción definida en acciones.json."""
     config = _cargar(ctx.obj)
-    with Motor(config, consola) as motor:
-        try:
-            codigo = motor.ejecutar(nombre, simular=simular, si=si)
-        except BuzonError as exc:
-            error.print(f"[red]Error:[/red] {escape(str(exc))}")
-            raise typer.Exit(1) from exc
-        except KeyboardInterrupt:
-            error.print("\n[yellow]Interrumpido por el usuario.[/yellow]")
-            raise typer.Exit(1) from None
+    with Motor(config, consola) as motor, _errores_controlados():
+        codigo = motor.ejecutar(nombre, simular=simular, si=si)
 
     raise typer.Exit(codigo)
 
