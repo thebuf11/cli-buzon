@@ -37,7 +37,7 @@ uv run pytest
 
 | Qué | Dónde | Para qué |
 |---|---|---|
-| Permisos | `opencode.json` | Editar pregunta; leer `.env`, `credentials*.json` y `token*.json` está prohibido; `git commit`/`push` bloqueados |
+| Permisos | `opencode.json` | Editar pregunta. Prohibido leer, editar o nombrar en el shell `.env`, `credentials*.json`, `token*.json` y las claves. Bloqueados encadenar órdenes (`;`, `&&`, `\|`, `>`…), `git diff --no-index`, `--si`, `git commit`, `push` y `reset`. Los bloqueos van al final porque gana la última regla que coincide |
 | Skill `acciones-json` | `.opencode/skills/acciones-json/SKILL.md` | Esquema, campos por tipo y reglas de seguridad de `acciones.json`. Cárgala antes de tocar ese fichero |
 | Comando `/nueva-accion` | `.opencode/commands/nueva-accion.md` | `/nueva-accion vaciar la carpeta Boletines cada semana` añade y valida la acción |
 | Subagente `revisor` | `.opencode/agents/revisor.md` | Revisión de solo lectura antes de cada commit |

@@ -29,6 +29,35 @@ permissions:
   - action: webfetch
     resource: "*"
     effect: deny
+  # Las reglas del agente se aplican después de las de opencode.json y gana la
+  # última que coincide: los bloqueos se repiten aquí, al final, para que los
+  # «allow» de arriba (p. ej. «git diff *») no los anulen.
+  - { action: read, resource: "*.env", effect: deny }
+  - { action: read, resource: "*.env.*", effect: deny }
+  - { action: read, resource: "*credentials*.json", effect: deny }
+  - { action: read, resource: "*client_secret*.json", effect: deny }
+  - { action: read, resource: "*token*.json", effect: deny }
+  - { action: read, resource: "*.pem", effect: deny }
+  - { action: read, resource: "*.key", effect: deny }
+  - { action: read, resource: "*.p12", effect: deny }
+  - { action: read, resource: "*.env.example", effect: allow }
+  - { action: shell, resource: "*;*", effect: deny }
+  - { action: shell, resource: "*&&*", effect: deny }
+  - { action: shell, resource: "*||*", effect: deny }
+  - { action: shell, resource: "*|*", effect: deny }
+  - { action: shell, resource: "*>*", effect: deny }
+  - { action: shell, resource: "*<*", effect: deny }
+  - { action: shell, resource: "*`*", effect: deny }
+  - { action: shell, resource: "*$(*", effect: deny }
+  - { action: shell, resource: "*--no-index*", effect: deny }
+  - { action: shell, resource: "*--output*", effect: deny }
+  - { action: shell, resource: "*.env*", effect: deny }
+  - { action: shell, resource: "*credentials*", effect: deny }
+  - { action: shell, resource: "*client_secret*", effect: deny }
+  - { action: shell, resource: "*token*.json*", effect: deny }
+  - { action: shell, resource: "*.pem*", effect: deny }
+  - { action: shell, resource: "*.key*", effect: deny }
+  - { action: shell, resource: "*.p12*", effect: deny }
 ---
 
 Eres el revisor de código de **cli-buzon**, una CLI en Python 3.12 con Typer,
