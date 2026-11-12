@@ -36,6 +36,8 @@ Spam: 37 mensajes
 | `buzon listar [CARPETA] [--horas N]` | Tabla de una carpeta (`INBOX`, `spam`, `papelera` o nombre IMAP) |
 | `buzon acciones` | Lista las acciones de `acciones.json` |
 | `buzon validar` | Comprueba `acciones.json` y dice qué campo falla |
+| `buzon comprobar-ia` | Dice si la IA está configurada y responde |
+| `buzon init` | Crea `acciones.json` y `.env` en tu carpeta de usuario |
 | `buzon ejecutar NOMBRE [--simular] [--si]` | Ejecuta una acción |
 | `buzon --config RUTA ...` | Usa otro fichero de acciones |
 
@@ -138,6 +140,34 @@ IA_MODELO=llama3
 Si no hay red o falta la URL, la CLI **no revienta**: explica el problema y
 continúa con las acciones que no necesitan IA.
 
+Para saber si la IA está bien configurada:
+
+```text
+$ buzon comprobar-ia
+IA_API_URL   http://localhost:11434/v1/chat/completions
+IA_MODELO    llama3
+IA_API_KEY   no definida
+OK la IA responde en 2.3 s: «OK»
+```
+
+Sale con **0** si responde y con **1** si no. La clave nunca se muestra, y de
+la URL se ocultan el usuario, la contraseña y los parámetros.
+
+Acciones con IA:
+
+| Acción | Qué hace |
+|--------|----------|
+| `resumen-24h` | Resume el contenido de los correos en tres bloques: urgente, para leer e ignorar |
+| `limpiar-prescindibles` | Clasifica cada correo (importante · leer · prescindible) y propone mover a la papelera los prescindibles |
+
+Garantías de `limpiar-prescindibles`:
+
+- Siempre pide confirmación, salvo con `--si`. Pruébalo primero con `--simular`.
+- Lo que Gmail marca como importante (⭐) **nunca** se propone para borrar.
+- Si la IA duda, devuelve algo raro o no menciona un correo, ese correo
+  queda como «leer» y no se toca.
+- Sin IA no se borra nada.
+
 ## Uso
 
 ```bash
@@ -155,6 +185,10 @@ buzon ejecutar limpiar-spam --simular
 
 # Borrar el spam sin preguntar (scripts)
 buzon ejecutar limpiar-spam --si
+
+# La IA propone qué borrar (publicidad, boletines…)
+buzon ejecutar limpiar-prescindibles --simular
+buzon ejecutar limpiar-prescindibles
 
 # Guardar el resumen del día en ~/resumenes/resumen-2026-11-09.md
 buzon ejecutar guardar-resumen
@@ -240,6 +274,7 @@ Tipos de acción:
 | `mover-papelera` | `carpeta`, `confirmar` | Mueve la carpeta a la papelera |
 | `exportar` | `horas`, `destino` | Escribe un Markdown con el resumen |
 | `revisar` | `carpeta`, `horas` (24) | Lista numerada interactiva: ver y borrar correos elegidos |
+| `clasificar-ia` | `carpeta`, `horas` (24) | La IA clasifica los correos y propone mover a la papelera los prescindibles |
 
 `carpeta` acepta los alias `entrada`, `spam` y `papelera`, o un nombre IMAP
 literal. Añadir una acción nueva **no exige tocar el código**: se escribe en

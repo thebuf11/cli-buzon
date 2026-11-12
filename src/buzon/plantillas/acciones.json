@@ -51,6 +51,13 @@
       "tipo": "exportar",
       "horas": 24,
       "destino": "~/resumenes"
+    },
+    {
+      "nombre": "limpiar-prescindibles",
+      "descripcion": "La IA clasifica los correos de las últimas 24 h y propone mover a la papelera publicidad y boletines",
+      "tipo": "clasificar-ia",
+      "carpeta": "entrada",
+      "horas": 24
     }
   ]
 }
