@@ -50,8 +50,34 @@ def test_config_inexistente(tmp_path):
 
 
 def test_funciona_desde_cualquier_carpeta(tmp_path, monkeypatch):
+    from buzon import config
+
     monkeypatch.delenv("BUZON_CONFIG", raising=False)
+    monkeypatch.setattr(config, "carpeta_usuario", lambda: tmp_path / "usuario")
     monkeypatch.chdir(tmp_path)
     resultado = runner.invoke(app, ["validar"])
     assert resultado.exit_code == 0
     assert "acciones.json" in resultado.output
+
+
+def test_init_y_validar(tmp_path):
+    destino = tmp_path / "config"
+    resultado = runner.invoke(app, ["init", "--carpeta", str(destino)])
+    assert resultado.exit_code == 0
+    assert (destino / "acciones.json").exists()
+    assert (destino / ".env").exists()
+
+    resultado = runner.invoke(app, ["--config", str(destino / "acciones.json"), "validar"])
+    assert resultado.exit_code == 0
+
+
+def test_sin_configuracion_sugiere_init(tmp_path, monkeypatch):
+    from buzon import config
+
+    monkeypatch.delenv("BUZON_CONFIG", raising=False)
+    monkeypatch.setattr(config, "carpeta_usuario", lambda: tmp_path / "usuario")
+    monkeypatch.setattr(config, "RAIZ_PROYECTO", tmp_path / "site-packages")
+    monkeypatch.chdir(tmp_path)
+    resultado = runner.invoke(app, ["acciones"])
+    assert resultado.exit_code == 3
+    assert "buzon init" in salida_completa(resultado)

@@ -11,7 +11,10 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
+
+from platformdirs import user_config_dir
 
 from .errores import AccionNoValida, ConfigError, CredencialesError
 
@@ -202,7 +205,7 @@ def cargar_configuracion(ruta: str | Path) -> Configuracion:
     if not ruta.exists():
         raise ConfigError(
             f"No existe el fichero de configuración «{ruta}». "
-            "Crea un acciones.json o indica otro con --config."
+            "Ejecuta «buzon init» para crear uno o indica otro con --config."
         )
 
     try:
@@ -245,15 +248,27 @@ def cargar_configuracion(ruta: str | Path) -> Configuracion:
     return Configuracion(ruta=ruta.resolve(), cuenta=cuenta, ia=ia, acciones=tuple(acciones))
 
 
-# cli-buzon/src/buzon/config.py → cli-buzon/. Con «uv tool install --editable .»
-# apunta a la carpeta del proyecto aunque la orden se lance desde otra.
+# cli-buzon/src/buzon/config.py → cli-buzon/. Solo sirve con «uv tool install --editable .»:
+# instalado desde git, esta ruta cae dentro de site-packages y no hay acciones.json.
 RAIZ_PROYECTO = Path(__file__).resolve().parents[2]
+
+
+def carpeta_usuario() -> Path:
+    """Carpeta de configuración del usuario según el sistema.
+
+    Windows: ``%APPDATA%\\buzon`` · Linux: ``~/.config/buzon`` ·
+    macOS: ``~/Library/Application Support/buzon``. La crea ``buzon init``.
+    """
+    return Path(user_config_dir("buzon", appauthor=False, roaming=True))
 
 
 def buscar_configuracion(explicita: str | Path | None = None) -> Path:
     """Decide qué ``acciones.json`` usar, para que ``buzon`` funcione desde cualquier carpeta.
 
-    Orden: ``--config`` → variable ``BUZON_CONFIG`` → ``./acciones.json`` → el del proyecto.
+    Orden: ``--config`` → variable ``BUZON_CONFIG`` → ``./acciones.json`` →
+    carpeta del usuario (``buzon init``) → el del proyecto (instalación editable).
+    Si no hay ninguno, devuelve la ruta de la carpeta del usuario para que el
+    error sugiera ``buzon init``.
     """
     if explicita is not None:
         return Path(explicita).expanduser()
@@ -263,7 +278,42 @@ def buscar_configuracion(explicita: str | Path | None = None) -> Path:
     local = Path("acciones.json")
     if local.exists():
         return local
-    return RAIZ_PROYECTO / "acciones.json"
+    usuario = carpeta_usuario() / "acciones.json"
+    if usuario.exists():
+        return usuario
+    proyecto = RAIZ_PROYECTO / "acciones.json"
+    if proyecto.exists():
+        return proyecto
+    return usuario
+
+
+# plantilla del paquete → nombre con el que se copia en la carpeta del usuario
+PLANTILLAS = {"acciones.json": "acciones.json", "env.example": ".env"}
+
+
+def inicializar(destino: Path) -> list[tuple[Path, bool]]:
+    """Copia las plantillas a ``destino`` sin sobrescribir nada.
+
+    Devuelve ``(ruta, creado)`` por fichero: ``creado`` es ``False`` si ya existía.
+    """
+    try:
+        destino.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ConfigError(f"No se pudo crear «{destino}»: {exc.strerror or exc}") from exc
+
+    origen = files("buzon") / "plantillas"
+    resultado: list[tuple[Path, bool]] = []
+    for plantilla, nombre in PLANTILLAS.items():
+        ruta = destino / nombre
+        if ruta.exists():
+            resultado.append((ruta, False))
+            continue
+        try:
+            ruta.write_text((origen / plantilla).read_text(encoding="utf-8"), encoding="utf-8")
+        except OSError as exc:
+            raise ConfigError(f"No se pudo escribir «{ruta}»: {exc.strerror or exc}") from exc
+        resultado.append((ruta, True))
+    return resultado
 
 
 def cargar_env(ruta: str | Path = ".env") -> None:

@@ -117,11 +117,56 @@ def test_proveedor_invalido(tmp_path):
 
 
 def test_buscar_configuracion_desde_otra_carpeta(tmp_path, monkeypatch):
+    from buzon import config
     from buzon.config import RAIZ_PROYECTO, buscar_configuracion
 
     monkeypatch.delenv("BUZON_CONFIG", raising=False)
+    monkeypatch.setattr(config, "carpeta_usuario", lambda: tmp_path / "usuario")
     monkeypatch.chdir(tmp_path)  # carpeta sin acciones.json
     assert buscar_configuracion() == RAIZ_PROYECTO / "acciones.json"
+
+
+def test_buscar_configuracion_prefiere_carpeta_usuario(tmp_path, monkeypatch):
+    from buzon import config
+    from buzon.config import buscar_configuracion
+
+    usuario = tmp_path / "usuario"
+    usuario.mkdir()
+    (usuario / "acciones.json").write_text("{}", encoding="utf-8")
+    monkeypatch.delenv("BUZON_CONFIG", raising=False)
+    monkeypatch.setattr(config, "carpeta_usuario", lambda: usuario)
+    monkeypatch.chdir(tmp_path)
+    assert buscar_configuracion() == usuario / "acciones.json"
+
+
+def test_instalado_sin_proyecto_apunta_a_carpeta_usuario(tmp_path, monkeypatch):
+    # Instalado con «uv tool install git+…»: RAIZ_PROYECTO cae en site-packages.
+    from buzon import config
+    from buzon.config import buscar_configuracion
+
+    monkeypatch.delenv("BUZON_CONFIG", raising=False)
+    monkeypatch.setattr(config, "carpeta_usuario", lambda: tmp_path / "usuario")
+    monkeypatch.setattr(config, "RAIZ_PROYECTO", tmp_path / "site-packages")
+    monkeypatch.chdir(tmp_path)
+    assert buscar_configuracion() == tmp_path / "usuario" / "acciones.json"
+
+
+def test_inicializar_crea_y_no_sobrescribe(tmp_path):
+    from buzon.config import inicializar
+
+    destino = tmp_path / "buzon"
+    primera = inicializar(destino)
+    assert [(ruta.name, creado) for ruta, creado in primera] == [
+        ("acciones.json", True),
+        (".env", True),
+    ]
+    # La plantilla es un acciones.json válido de verdad.
+    assert len(cargar_configuracion(destino / "acciones.json").acciones) >= 3
+
+    (destino / ".env").write_text("GMAIL_USUARIO=yo@ejemplo.com\n", encoding="utf-8")
+    segunda = inicializar(destino)
+    assert all(not creado for _, creado in segunda)
+    assert "yo@ejemplo.com" in (destino / ".env").read_text(encoding="utf-8")
 
 
 def test_buscar_configuracion_prioridades(tmp_path, monkeypatch):

@@ -15,7 +15,15 @@ from rich.markup import escape
 from rich.table import Table
 
 from . import __version__
-from .config import Accion, Configuracion, buscar_configuracion, cargar_configuracion, cargar_env
+from .config import (
+    Accion,
+    Configuracion,
+    buscar_configuracion,
+    cargar_configuracion,
+    cargar_env,
+    carpeta_usuario,
+    inicializar,
+)
 from .errores import BuzonError, ConfigError
 from .motor import Motor
 from .salida import LIMITE_FILAS, mostrar_correos
@@ -23,7 +31,7 @@ from .salida import LIMITE_FILAS, mostrar_correos
 app = typer.Typer(
     name="buzon",
     help=(
-        "Resume los correos importantes de las últimas 24 h y limpia el spam de Gmail.\n\n"
+        "Resume con IA los correos de las últimas 24 h y limpia el spam de Gmail.\n\n"
         "Sin argumentos ejecuta el flujo completo: resumen + lista de spam + confirmación."
     ),
     no_args_is_help=False,
@@ -118,8 +126,8 @@ def principal(
         "--config",
         "-c",
         help=(
-            "Ruta al fichero de acciones. Si no se indica: $BUZON_CONFIG, ./acciones.json "
-            "o el acciones.json del proyecto (funciona desde cualquier carpeta)."
+            "Ruta al fichero de acciones. Si no se indica: $BUZON_CONFIG, ./acciones.json, "
+            "el de tu carpeta de usuario (buzon init) o el del proyecto."
         ),
         show_default=False,
     ),
@@ -136,6 +144,34 @@ def principal(
 def version() -> None:
     """Muestra la versión instalada."""
     consola.print(f"buzon {__version__}")
+
+
+@app.command()
+def init(
+    carpeta: Path | None = typer.Option(
+        None,
+        "--carpeta",
+        help="Dónde crear la configuración (por defecto, la carpeta de usuario del sistema)",
+        show_default=False,
+    ),
+) -> None:
+    """Crea acciones.json y .env en tu carpeta de configuración (no sobrescribe nada)."""
+    destino = carpeta.expanduser() if carpeta is not None else carpeta_usuario()
+    try:
+        ficheros = inicializar(destino)
+    except ConfigError as exc:
+        error.print(f"[red]Error:[/red] {escape(str(exc))}")
+        raise typer.Exit(1) from exc
+
+    for ruta, creado in ficheros:
+        if creado:
+            consola.print(f"[green]Creado[/green]  {escape(str(ruta))}")
+        else:
+            consola.print(f"[yellow]Ya existe[/yellow] {escape(str(ruta))} (no se ha tocado)")
+    consola.print(
+        "\nSiguiente paso: rellena el [bold].env[/bold] con tus credenciales "
+        "y comprueba la configuración con [bold]buzon validar[/bold]."
+    )
 
 
 @app.command()

@@ -9,6 +9,7 @@ authors = [{ name = "Alumno DAM" }]
 dependencies = [
     "typer>=0.12",
     "rich>=13.7",
+    "platformdirs>=4.2",
 ]
 
 [project.scripts]
