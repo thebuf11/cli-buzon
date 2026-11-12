@@ -28,17 +28,48 @@ SISTEMA = (
 # de correos dejan sitio a las instrucciones y a la respuesta.
 PRESUPUESTO_CARACTERES = 24_000
 MAX_CARACTERES_CORREO = 1_500
-MIN_CARACTERES_CORREO = 200
+# Por debajo de esto un cuerpo no aporta nada: mejor solo remitente y asunto.
+MIN_CARACTERES_CORREO = 80
+# Remitente y asunto también ocupan: se recortan y cuentan en el presupuesto.
+MAX_CABECERA = 100
+# Con más correos ni las cabeceras caben; entran los importantes y los más nuevos.
+MAX_CORREOS_RESUMEN = 60
+MAX_CORREOS_CLASIFICAR = 35
 
 PATRON_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 PATRON_URL =re.compile(r"https?://\S{40,}")
 PATRON_ESPACIOS = re.compile(r"[ \t ]+")
 PATRON_LINEAS = re.compile(r"\n{3,}")
-# Donde empieza el hilo citado («El lun, 10 nov … escribió:», «On … wrote:», «-----Original…»)
+# Cabecera con la que Gmail/Outlook empiezan el hilo citado. Tiene que ser la
+# línea entera y llevar una hora («El lun, 10 nov 2026 a las 9:00, Ana <…> escribió:»):
+# así una frase normal como «El profesor escribió: …» no se toma por una cita.
 PATRON_CITA = re.compile(
-    r"^(?:El .{5,80} escribió:|On .{5,80} wrote:|-{3,}\s*(?:Original|Mensaje original))",
+    r"^\s*(?:"
+    r"El\s.{0,120}\d{1,2}:\d{2}.{0,120}\sescribió:"
+    r"|On\s.{0,120}\d{1,2}:\d{2}.{0,120}\swrote:"
+    r"|-{3,}\s*(?:Original Message|Mensaje original)\s*-*"
+    r")\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+# Si al quitar el hilo queda menos que esto, el corte se ha equivocado: se descarta.
+MINIMO_TRAS_CITA = 20
+# Delimitadores que usa el prompt: un correo no debe poder imitarlos.
+PATRON_DELIMITADOR = re.compile(r"<<<|>>>|^\s*#+", re.MULTILINE)
+
+
+def _como_dato(texto: str) -> str:
+    """Neutraliza en el texto de un correo los delimitadores del prompt (``<<<``, ``>>>``, ``###``).
+
+    Así un correo no puede «cerrar» su bloque y colar instrucciones como si
+    fueran otro correo o parte del enunciado.
+    """
+    return PATRON_DELIMITADOR.sub(lambda m: m.group(0).replace("#", "＃").replace("<", "‹").replace(">", "›"), texto)
+
+
+def _cabecera(texto: str) -> str:
+    """Remitente o asunto en una sola línea, neutralizado y de como mucho ``MAX_CABECERA``."""
+    texto = " ".join(_como_dato(PATRON_CONTROL.sub(" ", texto)).split())
+    return texto if len(texto) <= MAX_CABECERA else texto[: MAX_CABECERA - 1] + "…"
 
 
 def recortar(texto: str, limite: int) -> str:
@@ -48,13 +79,13 @@ def recortar(texto: str, limite: int) -> str:
     los espacios repetidos, y corta por una palabra completa.
     """
     cita = PATRON_CITA.search(texto)
-    if cita:
+    if cita and len(texto[: cita.start()].strip()) >= MINIMO_TRAS_CITA:
         texto = texto[: cita.start()]
     lineas = [linea for linea in texto.splitlines() if not linea.lstrip().startswith(">")]
     texto = "\n".join(lineas)
     texto = PATRON_URL.sub("[enlace]", texto)
     texto = PATRON_ESPACIOS.sub(" ", texto)
-    texto = PATRON_LINEAS.sub("\n\n", texto).strip()
+    texto = _como_dato(PATRON_LINEAS.sub("\n\n", texto).strip())
     if len(texto) <= limite:
         return texto
     corte = texto.rfind(" ", 0, limite)
@@ -67,24 +98,44 @@ def _fecha(correo: Correo) -> str:
     return correo.fecha.astimezone().strftime("%d/%m %H:%M")
 
 
+def _elegir(correos: Sequence[Correo], maximo: int) -> list[Correo]:
+    """Como mucho ``maximo`` correos: primero los importantes y luego los demás, en el orden recibido."""
+    if len(correos) <= maximo:
+        return list(correos)
+    posiciones = sorted(range(len(correos)), key=lambda i: not correos[i].importante)[:maximo]
+    return [correos[i] for i in sorted(posiciones)]
+
+
+def _caracteres_por_correo(cabeceras: Sequence[str], con_texto: int, reservado: int) -> int:
+    """Reparte entre los cuerpos lo que queda del presupuesto tras las cabeceras."""
+    if not con_texto:
+        return 0
+    disponible = PRESUPUESTO_CARACTERES - reservado - sum(len(c) + 20 for c in cabeceras)
+    por_correo = min(MAX_CARACTERES_CORREO, disponible // con_texto)
+    return por_correo if por_correo >= MIN_CARACTERES_CORREO else 0
+
+
 def _prompt(correos: Sequence[Correo], horas: int, textos: Mapping[str, str] | None = None) -> str:
     textos = textos or {}
-    con_texto = sum(1 for correo in correos if textos.get(correo.uid))
-    por_correo = MAX_CARACTERES_CORREO
-    if con_texto:
-        por_correo = max(
-            MIN_CARACTERES_CORREO, min(MAX_CARACTERES_CORREO, PRESUPUESTO_CARACTERES // con_texto)
-        )
+    incluidos = _elegir(correos, MAX_CORREOS_RESUMEN)
+    cabeceras = [
+        f"Fecha: {_fecha(c)} · De: {_cabecera(c.remitente)} · Asunto: {_cabecera(c.asunto)}"
+        for c in incluidos
+    ]
+    con_texto = sum(1 for correo in incluidos if textos.get(correo.uid))
+    por_correo = _caracteres_por_correo(cabeceras, con_texto, reservado=1_000)
 
-    lineas = [f"Estos son los {len(correos)} correos que he recibido en las últimas {horas} horas:", ""]
-    for numero, correo in enumerate(correos, start=1):
+    lineas = [f"Estos son {len(incluidos)} de los correos que he recibido en las últimas {horas} horas:", ""]
+    for numero, (correo, cabecera) in enumerate(zip(incluidos, cabeceras, strict=True), start=1):
         marca = " ⭐ (Gmail lo marca como importante)" if correo.importante else ""
         lineas.append(f"### Correo {numero}{marca}")
-        lineas.append(f"Fecha: {_fecha(correo)} · De: {correo.remitente} · Asunto: {correo.asunto}")
+        lineas.append(cabecera)
         texto = textos.get(correo.uid, "")
-        if texto:
+        if texto and por_correo:
             lineas += ["<<<", recortar(texto, por_correo), ">>>"]
         lineas.append("")
+    if len(correos) > len(incluidos):
+        lineas += [f"(Hay {len(correos) - len(incluidos)} correos más, no importantes, que no se incluyen.)", ""]
 
     lineas += [
         "Haz un resumen en español con exactamente estas tres secciones en Markdown",
@@ -103,8 +154,10 @@ def _prompt(correos: Sequence[Correo], horas: int, textos: Mapping[str, str] | N
 
 
 CATEGORIAS = ("importante", "leer", "prescindible")
+# Si la IA da dos opiniones sobre el mismo correo, gana la que menos borra.
+DESTRUCCION = {"importante": 0, "leer": 1, "prescindible": 2}
 # Para clasificar basta con el principio del correo: así caben más correos y va más rápido.
-CARACTERES_CLASIFICAR = 500
+CARACTERES_CLASIFICAR = 400
 PATRON_INICIO_JSON = re.compile(r"[\[{]")
 
 
@@ -117,13 +170,17 @@ class Clasificacion:
 
 
 def _prompt_clasificar(correos: Sequence[Correo], textos: Mapping[str, str]) -> str:
-    lineas = ["Clasifica cada uno de estos correos:", ""]
-    for numero, correo in enumerate(correos, start=1):
+    cabeceras = [f"De: {_cabecera(c.remitente)} · Asunto: {_cabecera(c.asunto)}" for c in correos]
+    con_texto = sum(1 for correo in correos if textos.get(correo.uid))
+    por_correo = min(CARACTERES_CLASIFICAR, _caracteres_por_correo(cabeceras, con_texto, reservado=1_200))
+
+    lineas = [f"Clasifica cada uno de estos {len(correos)} correos, numerados del 1 al {len(correos)}:", ""]
+    for numero, (correo, cabecera) in enumerate(zip(correos, cabeceras, strict=True), start=1):
         lineas.append(f"### {numero}")
-        lineas.append(f"De: {correo.remitente} · Asunto: {correo.asunto}")
+        lineas.append(cabecera)
         texto = textos.get(correo.uid, "")
-        if texto:
-            lineas += ["<<<", recortar(texto, CARACTERES_CLASIFICAR), ">>>"]
+        if texto and por_correo:
+            lineas += ["<<<", recortar(texto, por_correo), ">>>"]
         lineas.append("")
     lineas += [
         "Categorías:",
@@ -143,8 +200,12 @@ def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasifica
     """Convierte la respuesta de la IA en ``{número de correo: Clasificacion}``.
 
     Los modelos pequeños añaden texto alrededor del JSON o se inventan
-    categorías: se busca el JSON dentro del texto y todo lo dudoso se trata
-    como «leer», que nunca se borra.
+    categorías: se busca el JSON dentro del texto y las categorías dudosas se
+    tratan como «leer», que nunca se borra.
+
+    Si la numeración no cuadra (números fuera de 1..total, empezar en 0,
+    ``true``, decimales) se descarta TODA la clasificación: un desfase de uno
+    haría que la etiqueta de un correo se aplicara al de al lado.
     """
     inicio = PATRON_INICIO_JSON.search(respuesta)
     if not inicio:
@@ -155,10 +216,13 @@ def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasifica
     except json.JSONDecodeError as exc:
         raise SinRedError("La IA devolvió un JSON roto. Prueba otra vez o con otro modelo.") from exc
 
-    # Se aceptan tanto [{"n": 1, ...}] como {"1": {...}} o {"1": "prescindible"}.
+    # Envoltorio con una sola lista dentro: {"clasificacion": [...]}.
+    if isinstance(datos, dict) and len(datos) == 1 and isinstance(next(iter(datos.values())), list):
+        datos = next(iter(datos.values()))
+    # También {"1": {...}} o {"1": "prescindible"}; la clave manda sobre un «n» interior.
     if isinstance(datos, dict):
         datos = [
-            {"n": clave, **(valor if isinstance(valor, dict) else {"categoria": valor})}
+            {**(valor if isinstance(valor, dict) else {"categoria": valor}), "n": clave}
             for clave, valor in datos.items()
         ]
     if not isinstance(datos, list):
@@ -168,18 +232,34 @@ def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasifica
     for elemento in datos:
         if not isinstance(elemento, dict):
             continue
-        try:
-            numero = int(elemento.get("n"))
-        except (TypeError, ValueError):
-            continue
-        if not 1 <= numero <= total:
-            continue
+        numero = _numero(elemento.get("n"))
+        if numero is None or not 1 <= numero <= total:
+            raise SinRedError(
+                f"La IA numeró mal los correos ({elemento.get('n')!r} no está entre 1 y {total}); "
+                "por seguridad no se usa su clasificación."
+            )
         categoria = str(elemento.get("categoria", "")).strip().lower()
         if categoria not in CATEGORIAS:
             categoria = "leer"
         motivo = PATRON_CONTROL.sub("", str(elemento.get("motivo", ""))).strip()[:80]
-        resultado[numero] = Clasificacion(categoria, motivo)
+        anterior = resultado.get(numero)
+        if anterior is None or DESTRUCCION[categoria] < DESTRUCCION[anterior.categoria]:
+            resultado[numero] = Clasificacion(categoria, motivo)
+
+    if total and not resultado:
+        raise SinRedError("No se entendió la clasificación de la IA. Prueba otra vez o con otro modelo.")
     return resultado
+
+
+def _numero(valor: object) -> int | None:
+    """El número de correo solo vale si es un entero de verdad (o un texto con dígitos)."""
+    if isinstance(valor, bool):  # True es un int en Python: «"n": true» no es el correo 1
+        return None
+    if isinstance(valor, int):
+        return valor
+    if isinstance(valor, str) and valor.strip().isdigit():
+        return int(valor.strip())
+    return None
 
 
 class ProveedorIA:

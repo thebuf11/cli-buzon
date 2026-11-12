@@ -46,10 +46,48 @@ def test_interpreta_formato_diccionario():
     assert resultado[2].categoria == "leer"
 
 
-def test_categoria_inventada_y_numeros_fuera_de_rango():
-    respuesta = '[{"n": 1, "categoria": "basura"}, {"n": 7, "categoria": "prescindible"}, {"n": "x"}]'
-    resultado = interpretar_clasificacion(respuesta, 2)
+def test_categoria_inventada_se_trata_como_leer():
+    resultado = interpretar_clasificacion('[{"n": 1, "categoria": "basura"}]', 2)
     assert resultado == {1: Clasificacion("leer", "")}  # lo dudoso nunca se borra
+
+
+@pytest.mark.parametrize(
+    "respuesta",
+    [
+        '[{"n": 0, "categoria": "leer"}, {"n": 1, "categoria": "prescindible"}]',  # empieza en 0
+        '[{"n": 2, "categoria": "leer"}, {"n": 3, "categoria": "prescindible"}]',  # se salta el 1: 3 > total
+        '[{"n": true, "categoria": "prescindible"}]',  # True no es el correo 1
+        '[{"n": 1.9, "categoria": "prescindible"}]',  # ni 1.9 es el 1
+        '[{"n": "x", "categoria": "prescindible"}]',
+        '[{"categoria": "prescindible"}]',  # sin número
+    ],
+)
+def test_numeracion_rara_descarta_toda_la_clasificacion(respuesta):
+    # Un desfase de uno aplicaría la etiqueta de un correo al de al lado: mejor no usar nada.
+    with pytest.raises(SinRedError, match="numeró mal"):
+        interpretar_clasificacion(respuesta, 2)
+
+
+def test_la_clave_del_diccionario_manda_sobre_n_interior():
+    resultado = interpretar_clasificacion('{"1": {"n": 2, "categoria": "prescindible"}}', 2)
+    assert set(resultado) == {1}
+
+
+def test_envoltorio_con_una_lista_se_entiende():
+    resultado = interpretar_clasificacion('{"clasificacion": [{"n": 1, "categoria": "prescindible"}]}', 1)
+    assert resultado[1].categoria == "prescindible"
+
+
+@pytest.mark.parametrize("respuesta", ["[]", '["todo bien"]'])
+def test_respuesta_sin_ninguna_clasificacion_no_dice_nada_prescindible(respuesta):
+    # Antes quedaba todo como «leer» y la CLI decía «La IA no ve nada prescindible»: falso.
+    with pytest.raises(SinRedError, match="No se entendió"):
+        interpretar_clasificacion(respuesta, 3)
+
+
+def test_numero_repetido_gana_lo_que_menos_borra():
+    respuesta = '[{"n": 1, "categoria": "leer"}, {"n": 1, "categoria": "prescindible"}]'
+    assert interpretar_clasificacion(respuesta, 1)[1].categoria == "leer"
 
 
 @pytest.mark.parametrize("respuesta", ["No sé clasificar esto.", '[{"n": 1, "categoria": '])
@@ -234,3 +272,32 @@ def test_comprobar_ia_responde_y_no_muestra_secretos(tmp_path, monkeypatch, sin_
     for secreto in ("secreto", "CLAVE123", "MUYSECRETA"):
         assert secreto not in resultado.output
     assert "ia.ejemplo.com/v1/chat/completions" in resultado.output
+
+
+def test_ia_real_con_respuesta_ininteligible_no_borra_nada(tmp_path, monkeypatch):
+    # Con el ProveedorIA de verdad (solo urlopen es falso) y --si: no se mueve nada.
+    cliente = ClienteFalso(correos_de_prueba())
+    ruta = tmp_path / "acciones.json"
+    ruta.write_text(
+        json.dumps(
+            {"version": 1, "acciones": [{"nombre": "limpiar", "descripcion": "L", "tipo": "clasificar-ia"}]}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("IA_API_URL", "http://localhost/v1/chat/completions")
+    monkeypatch.setattr(ia.urllib.request, "urlopen", lambda p, timeout: RespuestaFalsa("No sé clasificar esto."))
+    salida = io.StringIO()
+    motor = Motor(cargar_configuracion(ruta), Console(file=salida, width=160), cliente=cliente)
+
+    assert motor.ejecutar("limpiar", si=True) == 0
+    assert cliente.movidos == []
+    assert "No se ha borrado nada" in salida.getvalue()
+
+
+def test_prompt_clasificar_cabe_en_el_presupuesto_con_el_maximo_de_correos():
+    largo = "Asunto larguísimo " * 30
+    correos = [correo(str(n), largo) for n in range(ia.MAX_CORREOS_CLASIFICAR)]
+    textos = {c.uid: "texto " * 2000 for c in correos}
+    prompt = ia._prompt_clasificar(correos, textos)
+    assert len(prompt) < ia.PRESUPUESTO_CARACTERES + 2000
+    assert prompt.count("<<<") == ia.MAX_CORREOS_CLASIFICAR  # los cuerpos siguen entrando

@@ -17,7 +17,7 @@ from rich.panel import Panel
 
 from .config import Accion, Configuracion
 from .errores import AccionNoValida, BuzonError, SinRedError
-from .ia import Clasificacion, ProveedorIA
+from .ia import MAX_CORREOS_CLASIFICAR, Clasificacion, ProveedorIA
 from .salida import (
     LIMITE_FILAS,
     confirmar,
@@ -129,10 +129,6 @@ class AccionResumenIA(AccionConIA):
         return 0
 
 
-# Más correos harían el prompt demasiado largo para un modelo local.
-MAX_CLASIFICAR = 50
-
-
 class AccionClasificarIA(AccionConIA):
     """La IA etiqueta los correos y propone mover a la papelera los prescindibles."""
 
@@ -146,11 +142,12 @@ class AccionClasificarIA(AccionConIA):
         if not correos:
             self.consola.print(f"[green]No hay correos en «{escape(carpeta)}» en las últimas {horas} h.[/green]")
             return 0
-        if len(correos) > MAX_CLASIFICAR:
+        # Más correos no caben en el prompt de un modelo local (ver ia.MAX_CORREOS_CLASIFICAR).
+        if len(correos) > MAX_CORREOS_CLASIFICAR:
             self.consola.print(
-                f"[dim]Hay {len(correos)} correos; se clasifican los {MAX_CLASIFICAR} más recientes.[/dim]"
+                f"[dim]Hay {len(correos)} correos; se clasifican los {MAX_CORREOS_CLASIFICAR} más recientes.[/dim]"
             )
-            correos = correos[:MAX_CLASIFICAR]
+            correos = correos[:MAX_CORREOS_CLASIFICAR]
 
         proveedor = ProveedorIA.desde_entorno(self.config)
         try:
