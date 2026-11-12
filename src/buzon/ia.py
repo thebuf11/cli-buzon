@@ -12,6 +12,7 @@ import re
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from .config import Configuracion
 from .errores import SinRedError
@@ -101,6 +102,86 @@ def _prompt(correos: Sequence[Correo], horas: int, textos: Mapping[str, str] | N
     return "\n".join(lineas)
 
 
+CATEGORIAS = ("importante", "leer", "prescindible")
+# Para clasificar basta con el principio del correo: así caben más correos y va más rápido.
+CARACTERES_CLASIFICAR = 500
+PATRON_INICIO_JSON = re.compile(r"[\[{]")
+
+
+@dataclass(frozen=True)
+class Clasificacion:
+    """Lo que la IA opina de un correo."""
+
+    categoria: str  # una de CATEGORIAS
+    motivo: str
+
+
+def _prompt_clasificar(correos: Sequence[Correo], textos: Mapping[str, str]) -> str:
+    lineas = ["Clasifica cada uno de estos correos:", ""]
+    for numero, correo in enumerate(correos, start=1):
+        lineas.append(f"### {numero}")
+        lineas.append(f"De: {correo.remitente} · Asunto: {correo.asunto}")
+        texto = textos.get(correo.uid, "")
+        if texto:
+            lineas += ["<<<", recortar(texto, CARACTERES_CLASIFICAR), ">>>"]
+        lineas.append("")
+    lineas += [
+        "Categorías:",
+        "- importante: personas reales, trabajo, estudios, plazos, facturas, seguridad de la cuenta.",
+        "- leer: información útil pero sin urgencia.",
+        "- prescindible: publicidad, ofertas, boletines y notificaciones automáticas que se pueden borrar.",
+        "Si dudas, usa «leer»: es mejor no borrar algo que borrar algo útil.",
+        "",
+        "Responde SOLO con un JSON, sin texto antes ni después, con este formato:",
+        '[{"n": 1, "categoria": "prescindible", "motivo": "publicidad de una tienda"}]',
+        "El motivo, en español y de menos de 8 palabras.",
+    ]
+    return "\n".join(lineas)
+
+
+def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasificacion]:
+    """Convierte la respuesta de la IA en ``{número de correo: Clasificacion}``.
+
+    Los modelos pequeños añaden texto alrededor del JSON o se inventan
+    categorías: se busca el JSON dentro del texto y todo lo dudoso se trata
+    como «leer», que nunca se borra.
+    """
+    inicio = PATRON_INICIO_JSON.search(respuesta)
+    if not inicio:
+        raise SinRedError("La IA no devolvió la clasificación en JSON. Prueba otra vez o con otro modelo.")
+    try:
+        # raw_decode lee un JSON completo y se para: ignora el texto que venga detrás.
+        datos, _ = json.JSONDecoder().raw_decode(respuesta, inicio.start())
+    except json.JSONDecodeError as exc:
+        raise SinRedError("La IA devolvió un JSON roto. Prueba otra vez o con otro modelo.") from exc
+
+    # Se aceptan tanto [{"n": 1, ...}] como {"1": {...}} o {"1": "prescindible"}.
+    if isinstance(datos, dict):
+        datos = [
+            {"n": clave, **(valor if isinstance(valor, dict) else {"categoria": valor})}
+            for clave, valor in datos.items()
+        ]
+    if not isinstance(datos, list):
+        raise SinRedError("La IA devolvió una clasificación con un formato inesperado.")
+
+    resultado: dict[int, Clasificacion] = {}
+    for elemento in datos:
+        if not isinstance(elemento, dict):
+            continue
+        try:
+            numero = int(elemento.get("n"))
+        except (TypeError, ValueError):
+            continue
+        if not 1 <= numero <= total:
+            continue
+        categoria = str(elemento.get("categoria", "")).strip().lower()
+        if categoria not in CATEGORIAS:
+            categoria = "leer"
+        motivo = PATRON_CONTROL.sub("", str(elemento.get("motivo", ""))).strip()[:80]
+        resultado[numero] = Clasificacion(categoria, motivo)
+    return resultado
+
+
 class ProveedorIA:
     """Llama a un servicio compatible con ``/v1/chat/completions``."""
 
@@ -145,11 +226,44 @@ class ProveedorIA:
             ]
         )
 
-    def _chat(self, mensajes: list[dict[str, str]]) -> str:
+    def clasificar(
+        self, correos: Sequence[Correo], textos: Mapping[str, str] | None = None
+    ) -> dict[str, Clasificacion]:
+        """Clasifica los correos; devuelve ``{uid: Clasificacion}``.
+
+        Un correo que la IA no menciona queda como «leer»: nunca se borra.
+        """
+        respuesta = self._chat(
+            [
+                {"role": "system", "content": SISTEMA},
+                {"role": "user", "content": _prompt_clasificar(correos, textos or {})},
+            ],
+            temperatura=0.0,
+        )
+        por_numero = interpretar_clasificacion(respuesta, len(correos))
+        sin_opinion = Clasificacion("leer", "la IA no lo clasificó")
+        return {
+            correo.uid: por_numero.get(numero, sin_opinion)
+            for numero, correo in enumerate(correos, start=1)
+        }
+
+    def probar(self, timeout: float = 60.0) -> str:
+        """Petición mínima para ``buzon comprobar-ia``; devuelve lo que contesta el modelo."""
+        return self._chat(
+            [{"role": "user", "content": "Responde únicamente con la palabra OK."}],
+            timeout=timeout,
+        )
+
+    def _chat(
+        self,
+        mensajes: list[dict[str, str]],
+        temperatura: float = 0.2,
+        timeout: float | None = None,
+    ) -> str:
         """Hace una petición ``chat/completions`` y devuelve el texto de la respuesta."""
         self.comprobar()
 
-        carga = {"model": self.modelo, "messages": mensajes, "temperature": 0.2}
+        carga = {"model": self.modelo, "messages": mensajes, "temperature": temperatura}
         cabeceras = {"Content-Type": "application/json"}
         if self.clave:
             cabeceras["Authorization"] = f"Bearer {self.clave}"
@@ -162,7 +276,7 @@ class ProveedorIA:
         )
 
         try:
-            with urllib.request.urlopen(peticion, timeout=self.timeout) as respuesta:
+            with urllib.request.urlopen(peticion, timeout=timeout or self.timeout) as respuesta:
                 datos = json.loads(respuesta.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise SinRedError(

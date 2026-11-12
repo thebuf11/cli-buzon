@@ -31,6 +31,7 @@ CAMPOS_POR_TIPO: dict[str, frozenset[str]] = {
     "mover-papelera": frozenset({"carpeta", "confirmar"}),
     "exportar": frozenset({"carpeta", "horas", "destino"}),
     "revisar": frozenset({"carpeta", "horas"}),
+    "clasificar-ia": frozenset({"carpeta", "horas"}),
 }
 TIPOS_VALIDOS = set(CAMPOS_POR_TIPO)
 CAMPOS_COMUNES = frozenset({"nombre", "descripcion", "tipo"})
@@ -234,7 +235,7 @@ def _leer_accion(datos: dict, contexto: str) -> Accion:
     if "horas" in datos:
         horas: int | None = _entero(datos, "horas", contexto, 24, 1)
     else:
-        horas = 24 if tipo in {"resumen-ia", "exportar", "revisar"} else None
+        horas = 24 if tipo in {"resumen-ia", "exportar", "revisar", "clasificar-ia"} else None
 
     carpeta = datos.get("carpeta", "entrada")
     if not isinstance(carpeta, str) or not carpeta.strip():

@@ -17,8 +17,14 @@ from rich.panel import Panel
 
 from .config import Accion, Configuracion
 from .errores import AccionNoValida, BuzonError, SinRedError
-from .ia import ProveedorIA
-from .salida import LIMITE_FILAS, hora_local, mostrar_correos, nombre_remitente
+from .ia import Clasificacion, ProveedorIA
+from .salida import (
+    LIMITE_FILAS,
+    hora_local,
+    mostrar_clasificacion,
+    mostrar_correos,
+    nombre_remitente,
+)
 
 
 class AccionBase:
@@ -119,6 +125,76 @@ class AccionResumenIA(AccionConIA):
         resumen = self._resumir(carpeta, correos, horas)
         if resumen is not None:
             self.consola.print(Panel(Markdown(resumen), title="Resumen con IA", border_style="cyan"))
+        return 0
+
+
+# Más correos harían el prompt demasiado largo para un modelo local.
+MAX_CLASIFICAR = 50
+
+
+class AccionClasificarIA(AccionConIA):
+    """La IA etiqueta los correos y propone mover a la papelera los prescindibles."""
+
+    def ejecutar(self, simular: bool = False, si: bool = False) -> int:
+        cuenta = self.config.cuenta
+        horas = self.definicion.horas or 24
+        carpeta = cuenta.resolver_carpeta(self.definicion.carpeta)
+        correos = self.motor.cliente().listar(carpeta, horas=horas)
+        correos.sort(key=_clave_fecha, reverse=True)
+
+        if not correos:
+            self.consola.print(f"[green]No hay correos en «{escape(carpeta)}» en las últimas {horas} h.[/green]")
+            return 0
+        if len(correos) > MAX_CLASIFICAR:
+            self.consola.print(
+                f"[dim]Hay {len(correos)} correos; se clasifican los {MAX_CLASIFICAR} más recientes.[/dim]"
+            )
+            correos = correos[:MAX_CLASIFICAR]
+
+        proveedor = ProveedorIA.desde_entorno(self.config)
+        try:
+            proveedor.comprobar()
+            textos = self._leer_textos(carpeta, correos)
+            with self.consola.status(f"La IA está clasificando {len(correos)} correos…"):
+                clasificacion = proveedor.clasificar(correos, textos)
+        except SinRedError as exc:
+            mostrar_correos(self.consola, correos, f"Últimas {horas} h · {len(correos)} correos")
+            self.consola.print(f"[yellow]Sin IA: {escape(str(exc))} No se ha borrado nada.[/yellow]")
+            return 0
+
+        # Red de seguridad: lo que Gmail marca como importante nunca se propone para borrar.
+        for correo in correos:
+            if correo.importante and clasificacion[correo.uid].categoria == "prescindible":
+                clasificacion[correo.uid] = Clasificacion("importante", "Gmail lo marca como importante")
+
+        mostrar_clasificacion(self.consola, correos, clasificacion, f"Últimas {horas} h · clasificados por la IA")
+        prescindibles = [c for c in correos if clasificacion[c.uid].categoria == "prescindible"]
+        if not prescindibles:
+            self.consola.print("[green]La IA no ve nada prescindible. No se borra nada.[/green]")
+            return 0
+
+        self.consola.print(
+            f"La IA propone mover [bold]{len(prescindibles)}[/bold] correo(s) «prescindible» "
+            f"a «{escape(cuenta.carpeta_papelera)}». Para elegir uno a uno, usa [bold]buzon revisar[/bold]."
+        )
+        if simular:
+            self.consola.print("[yellow]Simulación: no se ha movido nada.[/yellow]")
+            return 0
+        if not si and not typer.confirm(
+            f"¿Mover {len(prescindibles)} correo(s) prescindibles a la papelera?", default=False
+        ):
+            self.consola.print("Cancelado. No se ha borrado nada.")
+            return 0
+
+        movidos = self.motor.cliente().mover_uids_a_papelera(
+            carpeta, [correo.uid for correo in prescindibles], cuenta.carpeta_papelera
+        )
+        self.consola.print(f"[green]OK: {len(movidos)} correo(s) movidos a la papelera.[/green]")
+        if len(movidos) < len(prescindibles):
+            self.consola.print(
+                f"[yellow]Aviso: {len(prescindibles) - len(movidos)} correo(s) no se pudieron mover.[/yellow]"
+            )
+            return 1
         return 0
 
 
@@ -371,4 +447,5 @@ ACCIONES: dict[str, type[AccionBase]] = {
     "mover-papelera": AccionMoverPapelera,
     "exportar": AccionExportar,
     "revisar": AccionRevisar,
+    "clasificar-ia": AccionClasificarIA,
 }

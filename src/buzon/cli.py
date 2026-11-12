@@ -7,7 +7,9 @@ traduce los errores a mensajes y códigos de salida (0, 1, 2, 3).
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import typer
 from rich.console import Console
@@ -24,7 +26,8 @@ from .config import (
     carpeta_usuario,
     inicializar,
 )
-from .errores import BuzonError, ConfigError
+from .errores import BuzonError, ConfigError, SinRedError
+from .ia import ProveedorIA
 from .motor import Motor
 from .salida import LIMITE_FILAS, mostrar_correos
 
@@ -204,6 +207,49 @@ def validar(ctx: typer.Context) -> None:
         consola.print(f"  · [bold]{escape(accion.nombre)}[/bold] ({escape(accion.tipo)})")
     for aviso in config.avisos:
         consola.print(f"[yellow]Aviso:[/yellow] {escape(aviso)}")
+
+
+def _url_sin_secretos(url: str) -> str:
+    """Quita usuario, contraseña y parámetros: algunos servicios ponen la clave en la URL."""
+    if not url:
+        return ""
+    partes = urlsplit(url)
+    servidor = partes.hostname or ""
+    if partes.port:
+        servidor += f":{partes.port}"
+    oculto = " (parámetros ocultos)" if partes.query or partes.username else ""
+    return f"{partes.scheme}://{servidor}{partes.path}{oculto}"
+
+
+@app.command("comprobar-ia")
+def comprobar_ia(ctx: typer.Context) -> None:
+    """Dice si la IA está configurada y responde (no muestra la clave)."""
+    config = _cargar(ctx.obj)
+    nombres = config.ia
+    proveedor = ProveedorIA.desde_entorno(config)
+
+    consola.print(
+        f"[bold]{nombres.url_env}[/bold]   {escape(_url_sin_secretos(proveedor.url)) or '[red]no definida[/red]'}"
+    )
+    consola.print(f"[bold]{nombres.modelo_env}[/bold]    {escape(proveedor.modelo)}")
+    clave = "[green]definida[/green] (no se muestra)" if proveedor.clave else "[dim]no definida[/dim]"
+    consola.print(f"[bold]{nombres.clave_env}[/bold]   {clave}")
+
+    inicio = time.perf_counter()
+    try:
+        with consola.status("Preguntando al modelo…"):
+            respuesta = proveedor.probar()
+    except SinRedError as exc:
+        error.print(f"[red]La IA no está disponible:[/red] {escape(str(exc))}")
+        error.print(
+            "[dim]Las acciones sin IA (listar, revisar, limpiar-spam…) siguen funcionando.[/dim]"
+        )
+        raise typer.Exit(1) from exc
+
+    segundos = time.perf_counter() - inicio
+    consola.print(
+        f"[green]OK[/green] la IA responde en {segundos:.1f} s: «{escape(respuesta[:60])}»"
+    )
 
 
 @app.command()

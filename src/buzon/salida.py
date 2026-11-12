@@ -65,3 +65,36 @@ def mostrar_correos(
     consola.print(tabla_correos(correos, titulo, limite, numerar))
     if len(correos) > limite:
         consola.print(f"[dim]… y {len(correos) - limite} más.[/dim]")
+
+
+ETIQUETAS_CATEGORIA = {
+    "importante": "[bold red]importante[/bold red]",
+    "leer": "[cyan]leer[/cyan]",
+    "prescindible": "[dim]prescindible[/dim]",
+}
+
+
+def mostrar_clasificacion(consola: Console, correos: list[Correo], clasificacion, titulo: str) -> None:
+    """Tabla de correos con la categoría y el motivo que ha dado la IA.
+
+    ``clasificacion`` asocia el UID de cada correo con un objeto que tiene
+    ``categoria`` y ``motivo`` (ver :class:`buzon.ia.Clasificacion`).
+    """
+    tabla = Table(title=titulo, title_justify="left", header_style="bold cyan", expand=False)
+    tabla.add_column("#", style="bold", justify="right", no_wrap=True)
+    tabla.add_column("Hora", style="dim", no_wrap=True)
+    tabla.add_column("Remitente", max_width=24, overflow="ellipsis")
+    tabla.add_column("Asunto", max_width=44, overflow="ellipsis")
+    tabla.add_column("IA", no_wrap=True)
+    tabla.add_column("Motivo", max_width=30, overflow="ellipsis", style="dim")
+    for numero, correo in enumerate(correos, start=1):
+        opinion = clasificacion[correo.uid]
+        tabla.add_row(
+            str(numero),
+            hora_local(correo),
+            escape(nombre_remitente(correo.remitente)),
+            ("⭐ " if correo.importante else "") + escape(correo.asunto),
+            ETIQUETAS_CATEGORIA.get(opinion.categoria, escape(opinion.categoria)),
+            escape(opinion.motivo),
+        )
+    consola.print(tabla)
