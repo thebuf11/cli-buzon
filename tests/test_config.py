@@ -180,3 +180,69 @@ def test_buscar_configuracion_prioridades(tmp_path, monkeypatch):
     monkeypatch.setenv("BUZON_CONFIG", str(tmp_path / "otra.json"))
     assert buscar_configuracion() == tmp_path / "otra.json"
     assert buscar_configuracion(tmp_path / "explicita.json") == tmp_path / "explicita.json"
+
+
+# ── campos desconocidos y campos que el tipo no usa ───────────
+
+
+def test_errata_en_un_campo_sugiere_el_correcto(tmp_path):
+    datos = base()
+    datos["acciones"][0]["hroas"] = 12
+    with pytest.raises(ConfigError, match=r"acciones\[0\]\.hroas: campo desconocido\. ¿Quisiste decir «horas»\?"):
+        cargar_configuracion(escribir(tmp_path, datos))
+
+
+def test_errata_en_tipo_se_detecta_antes_que_el_tipo_vacio(tmp_path):
+    datos = base()
+    datos["acciones"][1]["tpo"] = datos["acciones"][1].pop("tipo")
+    with pytest.raises(ConfigError, match="¿Quisiste decir «tipo»"):
+        cargar_configuracion(escribir(tmp_path, datos))
+
+
+def test_horas_en_mover_papelera_se_rechaza(tmp_path):
+    # Haría creer que solo se borran las últimas horas, y se borra toda la carpeta.
+    datos = base()
+    datos["acciones"][2]["horas"] = 24
+    with pytest.raises(ConfigError, match=r"acciones\[2\]\.horas: las acciones de tipo «mover-papelera» no usan"):
+        cargar_configuracion(escribir(tmp_path, datos))
+
+
+def test_destino_fuera_de_exportar_se_rechaza(tmp_path):
+    datos = base()
+    datos["acciones"][1]["destino"] = "~/spam"
+    with pytest.raises(ConfigError, match=r"acciones\[1\]\.destino"):
+        cargar_configuracion(escribir(tmp_path, datos))
+
+
+@pytest.mark.parametrize(
+    ("seccion", "clave", "sugerencia"),
+    [("cuenta", "pueto", "puerto"), ("ia", "url", "url_env")],
+)
+def test_errata_en_cuenta_e_ia(tmp_path, seccion, clave, sugerencia):
+    datos = base()
+    datos[seccion] = {clave: "x"}
+    with pytest.raises(ConfigError, match=rf"{seccion}\.{clave}: campo desconocido\. ¿Quisiste decir «{sugerencia}»"):
+        cargar_configuracion(escribir(tmp_path, datos))
+
+
+def test_campo_desconocido_en_la_raiz(tmp_path):
+    datos = base()
+    datos["acione"] = []
+    with pytest.raises(ConfigError, match=r"^acione: campo desconocido\. ¿Quisiste decir «acciones»"):
+        cargar_configuracion(escribir(tmp_path, datos))
+
+
+def test_claves_con_guion_bajo_son_comentarios(tmp_path):
+    datos = base()
+    datos["_nota"] = "JSON no tiene comentarios"
+    datos["acciones"][0]["_uso"] = "lo lanzo cada mañana"
+    assert len(cargar_configuracion(escribir(tmp_path, datos)).acciones) == 4
+
+
+def test_mover_papelera_sin_confirmar_da_aviso(tmp_path):
+    datos = base()
+    assert cargar_configuracion(escribir(tmp_path, datos)).avisos == ()
+    datos["acciones"][2]["confirmar"] = False
+    avisos = cargar_configuracion(escribir(tmp_path, datos)).avisos
+    assert len(avisos) == 1
+    assert "limpiar-spam" in avisos[0]

@@ -202,6 +202,8 @@ def validar(ctx: typer.Context) -> None:
     )
     for accion in config.acciones:
         consola.print(f"  · [bold]{escape(accion.nombre)}[/bold] ({escape(accion.tipo)})")
+    for aviso in config.avisos:
+        consola.print(f"[yellow]Aviso:[/yellow] {escape(aviso)}")
 
 
 @app.command()

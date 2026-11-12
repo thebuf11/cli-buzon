@@ -81,3 +81,36 @@ def test_sin_configuracion_sugiere_init(tmp_path, monkeypatch):
     resultado = runner.invoke(app, ["acciones"])
     assert resultado.exit_code == 3
     assert "buzon init" in salida_completa(resultado)
+
+
+def test_validar_errata_sale_con_3_y_sugiere(tmp_path):
+    ruta = tmp_path / "acciones.json"
+    ruta.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "acciones": [{"nombre": "listar-spam", "descripcion": "Spam", "tipo": "listar", "carpta": "spam"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    resultado = runner.invoke(app, ["--config", str(ruta), "validar"])
+    assert resultado.exit_code == 3
+    # Rich parte las líneas a 80 columnas: se comparan las palabras, no los saltos.
+    assert "¿Quisiste decir «carpeta»?" in " ".join(salida_completa(resultado).split())
+
+
+def test_validar_muestra_avisos_sin_fallar(tmp_path):
+    ruta = tmp_path / "acciones.json"
+    ruta.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "acciones": [{"nombre": "vaciar-spam", "descripcion": "Vaciar", "tipo": "mover-papelera"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    resultado = runner.invoke(app, ["--config", str(ruta), "validar"])
+    assert resultado.exit_code == 0
+    assert "Aviso" in resultado.output

@@ -11,6 +11,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from difflib import get_close_matches
 from importlib.resources import files
 from pathlib import Path
 
@@ -18,9 +19,56 @@ from platformdirs import user_config_dir
 
 from .errores import AccionNoValida, ConfigError, CredencialesError
 
-TIPOS_VALIDOS = {"resumen-ia", "listar", "mover-papelera", "exportar", "revisar"}
 PROVEEDORES = {"imap", "gmail-api"}
-PATRON_NOMBRE =re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+PATRON_NOMBRE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+# Campos opcionales que admite cada tipo, además de nombre, descripcion y tipo.
+# Un campo que el tipo no usa es casi siempre un error: «horas» en
+# «mover-papelera» haría creer que solo se borran las últimas horas, y se borra todo.
+CAMPOS_POR_TIPO: dict[str, frozenset[str]] = {
+    "resumen-ia": frozenset({"carpeta", "horas"}),
+    "listar": frozenset({"carpeta", "horas"}),
+    "mover-papelera": frozenset({"carpeta", "confirmar"}),
+    "exportar": frozenset({"carpeta", "horas", "destino"}),
+    "revisar": frozenset({"carpeta", "horas"}),
+}
+TIPOS_VALIDOS = set(CAMPOS_POR_TIPO)
+CAMPOS_COMUNES = frozenset({"nombre", "descripcion", "tipo"})
+CAMPOS_ACCION = CAMPOS_COMUNES.union(*CAMPOS_POR_TIPO.values())
+CAMPOS_RAIZ = frozenset({"version", "cuenta", "ia", "acciones"})
+CAMPOS_CUENTA = frozenset(
+    {
+        "proveedor",
+        "servidor",
+        "puerto",
+        "usuario_env",
+        "password_env",
+        "carpeta_entrada",
+        "carpeta_spam",
+        "carpeta_papelera",
+        "credenciales_api",
+        "token_api",
+    }
+)
+CAMPOS_IA = frozenset({"url_env", "clave_env", "modelo_env", "modelo_por_defecto"})
+
+
+def _comprobar_campos(datos: dict, validos: frozenset[str], contexto: str) -> None:
+    """Rechaza claves desconocidas y sugiere la más parecida.
+
+    Las claves que empiezan por ``_`` se permiten como comentarios
+    (JSON no tiene comentarios): ``"_nota": "esto lo uso los lunes"``.
+    """
+    for clave in datos:
+        if not isinstance(clave, str) or clave.startswith("_") or clave in validos:
+            continue
+        prefijo = f"{contexto}." if contexto else ""
+        parecidas = get_close_matches(clave, validos, n=1, cutoff=0.6)
+        pista = f" ¿Quisiste decir «{parecidas[0]}»?" if parecidas else ""
+        raise ConfigError(
+            f"{prefijo}{clave}: campo desconocido.{pista} "
+            f"Campos válidos: {', '.join(sorted(validos))}"
+        )
 
 
 @dataclass(frozen=True)
@@ -78,6 +126,7 @@ class Configuracion:
     cuenta: Cuenta
     ia: Ia
     acciones: tuple[Accion, ...]
+    avisos: tuple[str, ...] = ()
 
     def accion(self, nombre: str) -> Accion:
         for accion in self.acciones:
@@ -117,6 +166,7 @@ def _leer_cuenta(datos: dict) -> Cuenta:
     bruto = datos.get("cuenta", {})
     if not isinstance(bruto, dict):
         raise ConfigError("cuenta: debe ser un objeto JSON {...}")
+    _comprobar_campos(bruto, CAMPOS_CUENTA, "cuenta")
     proveedor = _texto(bruto, "proveedor", "cuenta", "imap")
     if proveedor not in PROVEEDORES:
         raise ConfigError(
@@ -140,6 +190,7 @@ def _leer_ia(datos: dict) -> Ia:
     bruto = datos.get("ia", {})
     if not isinstance(bruto, dict):
         raise ConfigError("ia: debe ser un objeto JSON {...}")
+    _comprobar_campos(bruto, CAMPOS_IA, "ia")
     return Ia(
         url_env=_texto(bruto, "url_env", "ia", "IA_API_URL"),
         clave_env=_texto(bruto, "clave_env", "ia", "IA_API_KEY"),
@@ -149,6 +200,10 @@ def _leer_ia(datos: dict) -> Ia:
 
 
 def _leer_accion(datos: dict, contexto: str) -> Accion:
+    # Lo primero, las erratas: con «"tpo": "listar"» el mensaje útil es «¿quisiste decir tipo?»,
+    # no «tipo None no es válido».
+    _comprobar_campos(datos, CAMPOS_ACCION, contexto)
+
     nombre = datos.get("nombre")
     if not isinstance(nombre, str) or not PATRON_NOMBRE.match(nombre):
         raise ConfigError(
@@ -166,6 +221,15 @@ def _leer_accion(datos: dict, contexto: str) -> Accion:
             f"{contexto}.tipo: «{tipo}» no es válido. Usa uno de: "
             f"{', '.join(sorted(TIPOS_VALIDOS))}"
         )
+
+    # Los campos que existen pero este tipo no usa (las erratas ya se han detectado arriba).
+    permitidos = CAMPOS_COMUNES | CAMPOS_POR_TIPO[tipo]
+    for clave in datos:
+        if isinstance(clave, str) and not clave.startswith("_") and clave not in permitidos:
+            raise ConfigError(
+                f"{contexto}.{clave}: las acciones de tipo «{tipo}» no usan este campo. "
+                f"Campos válidos para «{tipo}»: {', '.join(sorted(CAMPOS_POR_TIPO[tipo]))}"
+            )
 
     if "horas" in datos:
         horas: int | None = _entero(datos, "horas", contexto, 24, 1)
@@ -225,6 +289,7 @@ def cargar_configuracion(ruta: str | Path) -> Configuracion:
 
     if datos.get("version") != 1:
         raise ConfigError(f"version: se esperaba 1, se encontró {datos.get('version')!r}")
+    _comprobar_campos(datos, CAMPOS_RAIZ, "")
 
     cuenta = _leer_cuenta(datos)
     ia = _leer_ia(datos)
@@ -245,7 +310,25 @@ def cargar_configuracion(ruta: str | Path) -> Configuracion:
         vistos.add(accion.nombre)
         acciones.append(accion)
 
-    return Configuracion(ruta=ruta.resolve(), cuenta=cuenta, ia=ia, acciones=tuple(acciones))
+    return Configuracion(
+        ruta=ruta.resolve(),
+        cuenta=cuenta,
+        ia=ia,
+        acciones=tuple(acciones),
+        avisos=tuple(_avisos(acciones)),
+    )
+
+
+def _avisos(acciones: list[Accion]) -> list[str]:
+    """Cosas válidas pero arriesgadas: no impiden usar la configuración."""
+    avisos = []
+    for accion in acciones:
+        if accion.tipo == "mover-papelera" and not accion.confirmar:
+            avisos.append(
+                f"«{accion.nombre}» mueve correos a la papelera sin pedir confirmación; "
+                "añade \"confirmar\": true para que pregunte antes."
+            )
+    return avisos
 
 
 # cli-buzon/src/buzon/config.py → cli-buzon/. Solo sirve con «uv tool install --editable .»:
