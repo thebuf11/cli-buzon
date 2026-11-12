@@ -5,7 +5,6 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
-import typer
 from rich.console import Console
 from typer.testing import CliRunner
 
@@ -139,7 +138,7 @@ def preparar(tmp_path, monkeypatch, cliente, ia_falsa, confirmar=True):
         preguntas.append(texto)
         return confirmar
 
-    monkeypatch.setattr(typer, "confirm", confirmar_falso)
+    monkeypatch.setattr("buzon.acciones.confirmar", confirmar_falso)
     salida = io.StringIO()
     consola = Console(file=salida, force_terminal=False, width=160)
     return Motor(cargar_configuracion(ruta), consola, cliente=cliente), salida, preguntas

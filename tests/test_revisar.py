@@ -58,7 +58,7 @@ def preparar(tmp_path, monkeypatch, ordenes, confirmar=True, fallan=()):
     ruta.write_text(json.dumps(datos), encoding="utf-8")
     cola = list(ordenes)
     monkeypatch.setattr(typer, "prompt", lambda *a, **k: cola.pop(0))
-    monkeypatch.setattr(typer, "confirm", lambda *a, **k: confirmar)
+    monkeypatch.setattr("buzon.acciones.confirmar", lambda *a, **k: confirmar)
     salida = io.StringIO()
     cliente = ClienteFalso(CORREOS, fallan)
     motor = Motor(cargar_configuracion(ruta), Console(file=salida, width=140), cliente=cliente)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from email.utils import parseaddr
 
+import typer
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
@@ -98,3 +99,24 @@ def mostrar_clasificacion(consola: Console, correos: list[Correo], clasificacion
             escape(opinion.motivo),
         )
     consola.print(tabla)
+
+
+SI = frozenset({"s", "si", "sí", "y", "yes"})
+NO = frozenset({"n", "no"})
+
+
+def confirmar(pregunta: str) -> bool:
+    """Pregunta sí/no en español con ``[s/N]``: Enter (o nada) es «no».
+
+    Acepta s, si, sí (y también y/yes por costumbre) y n/no. Cualquier otra
+    respuesta se vuelve a preguntar, en vez de tomarse como un «sí» por error.
+    Sin teclado (tubería, script), click lanza ``Abort`` y la CLI lo explica.
+    """
+    while True:
+        respuesta = typer.prompt(f"{pregunta} [s/N]", default="", show_default=False)
+        respuesta = respuesta.strip().lower()
+        if not respuesta or respuesta in NO:
+            return False
+        if respuesta in SI:
+            return True
+        typer.echo("Responde «s» (sí) o «n» (no).")

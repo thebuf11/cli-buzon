@@ -23,7 +23,7 @@ Importantes · últimas 24 h
 
 Spam: 37 mensajes
 ...
-¿Eliminar TODA la bandeja de spam (37 mensajes)? [y/N]:
+¿Eliminar TODA la bandeja de spam (37 mensajes)? [s/N]:
 ```
 
 Órdenes disponibles:
@@ -217,7 +217,7 @@ entrada · últimas 24 h
 v N ver correo · b 1,3,5-7 borrar · b * borrar todos · l listar · q salir
 buzon: v 3
 buzon: b 1-2
-¿Mover 2 correo(s) a la papelera? [y/N]: y
+¿Mover 2 correo(s) a la papelera? [s/N]: s
 OK: 2 correo(s) movidos a la papelera.
 ```
 

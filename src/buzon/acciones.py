@@ -20,6 +20,7 @@ from .errores import AccionNoValida, BuzonError, SinRedError
 from .ia import Clasificacion, ProveedorIA
 from .salida import (
     LIMITE_FILAS,
+    confirmar,
     hora_local,
     mostrar_clasificacion,
     mostrar_correos,
@@ -180,9 +181,7 @@ class AccionClasificarIA(AccionConIA):
         if simular:
             self.consola.print("[yellow]Simulación: no se ha movido nada.[/yellow]")
             return 0
-        if not si and not typer.confirm(
-            f"¿Mover {len(prescindibles)} correo(s) prescindibles a la papelera?", default=False
-        ):
+        if not si and not confirmar(f"¿Mover {len(prescindibles)} correo(s) prescindibles a la papelera?"):
             self.consola.print("Cancelado. No se ha borrado nada.")
             return 0
 
@@ -221,9 +220,9 @@ class AccionMoverPapelera(AccionBase):
             return 0
 
         if self.definicion.confirmar and not si:
-            if not typer.confirm(
-                "¿Eliminar TODA la bandeja de spam? (se moverá a la papelera)",
-                default=False,
+            # La pregunta nombra la carpeta real: la acción puede apuntar a otra que no sea el spam.
+            if not confirmar(
+                f"¿Mover TODOS los {len(correos)} mensajes de «{carpeta}» a la papelera?"
             ):
                 self.consola.print("Cancelado. No se ha borrado nada.")
                 return 0
@@ -373,7 +372,7 @@ class AccionRevisar(AccionBase):
         if simular:
             self.consola.print("[yellow]Simulación: no se ha movido nada.[/yellow]")
             return None
-        if not si and not typer.confirm(f"¿Mover {len(elegidos)} correo(s) a la papelera?", default=False):
+        if not si and not confirmar(f"¿Mover {len(elegidos)} correo(s) a la papelera?"):
             self.consola.print("Cancelado. No se ha borrado nada.")
             return None
 
