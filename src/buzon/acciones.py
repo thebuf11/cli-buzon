@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
+from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
 
@@ -55,8 +56,52 @@ class AccionListar(AccionBase):
         return 0
 
 
-class AccionResumenIA(AccionBase):
-    """Muestra los correos importantes y pide a la IA un resumen."""
+class AccionConIA(AccionBase):
+    """Base de las acciones que piden un resumen a la IA (resumen-ia y exportar)."""
+
+    def _resumir(self, carpeta: str, correos: list, horas: int) -> str | None:
+        """Lee el texto de los correos y pide el resumen a la IA.
+
+        Devuelve ``None`` (tras explicar por qué) si no hay IA o no responde:
+        la acción sigue y el usuario al menos ve la tabla.
+        """
+        proveedor = ProveedorIA.desde_entorno(self.config)
+        try:
+            proveedor.comprobar()  # sin IA no merece la pena descargar los cuerpos
+            textos = self._leer_textos(carpeta, correos)
+            with self.consola.status(f"La IA está resumiendo {len(correos)} correos…"):
+                return proveedor.resumir(correos, horas, textos)
+        except SinRedError as exc:
+            self.consola.print(f"[yellow]Sin IA: {escape(str(exc))}[/yellow]")
+            return None
+
+    def _leer_textos(self, carpeta: str, correos: list) -> dict[str, str]:
+        """Descarga el cuerpo de los correos más relevantes (importantes y recientes primero).
+
+        Si uno falla se resume solo con su asunto: un correo raro no tumba el resumen.
+        """
+        # sorted es estable: primero por fecha y luego por importancia deja
+        # los importantes delante, cada grupo del más nuevo al más viejo.
+        elegidos = sorted(correos, key=_clave_fecha, reverse=True)
+        elegidos = sorted(elegidos, key=lambda c: not c.importante)[:MAX_CORREOS_CON_TEXTO]
+        textos: dict[str, str] = {}
+        cliente = self.motor.cliente()
+        with self.consola.status(f"Leyendo {len(elegidos)} correos…") as estado:
+            for numero, correo in enumerate(elegidos, start=1):
+                estado.update(f"Leyendo correos… {numero}/{len(elegidos)}")
+                try:
+                    textos[correo.uid] = cliente.leer_texto(carpeta, correo.uid)
+                except BuzonError:
+                    continue
+        return textos
+
+
+# Cuántos cuerpos se descargan para el resumen; el resto entra solo con remitente y asunto.
+MAX_CORREOS_CON_TEXTO = 30
+
+
+class AccionResumenIA(AccionConIA):
+    """Enseña los correos de la ventana y pide a la IA un resumen de su contenido."""
 
     def ejecutar(self, simular: bool = False, si: bool = False) -> int:
         cuenta = self.config.cuenta
@@ -68,23 +113,12 @@ class AccionResumenIA(AccionBase):
             self.consola.print(f"[green]No hay correos en «{carpeta}» en las últimas {horas} h.[/green]")
             return 0
 
-        importantes = [correo for correo in correos if correo.importante]
-        if importantes:
-            mostrar_correos(self.consola, importantes, f"Importantes · últimas {horas} h")
-        else:
-            self.consola.print(
-                "[yellow]Gmail no ha marcado ningún correo como importante; te enseño todos.[/yellow]"
-            )
-            mostrar_correos(self.consola, correos, f"Últimas {horas} h")
-            importantes = correos
+        correos.sort(key=_clave_fecha, reverse=True)
+        mostrar_correos(self.consola, correos, f"Últimas {horas} h · {len(correos)} correos")
 
-        try:
-            resumen = ProveedorIA.desde_entorno(self.config).resumir(importantes, horas)
-        except SinRedError as exc:
-            self.consola.print(f"[yellow]Sin IA: {escape(str(exc))}[/yellow]")
-            return 0
-
-        self.consola.print(Panel(escape(resumen), title="Resumen con IA", border_style="cyan"))
+        resumen = self._resumir(carpeta, correos, horas)
+        if resumen is not None:
+            self.consola.print(Panel(Markdown(resumen), title="Resumen con IA", border_style="cyan"))
         return 0
 
 
@@ -278,7 +312,7 @@ def _clave_fecha(correo) -> datetime:
     return correo.fecha or datetime.min.replace(tzinfo=timezone.utc)
 
 
-class AccionExportar(AccionBase):
+class AccionExportar(AccionConIA):
     """Escribe el resumen del día en un fichero Markdown."""
 
     def ejecutar(self, simular: bool = False, si: bool = False) -> int:
@@ -286,12 +320,9 @@ class AccionExportar(AccionBase):
         horas = self.definicion.horas or 24
         carpeta = cuenta.resolver_carpeta(self.definicion.carpeta)
         correos = self.motor.cliente().listar(carpeta, horas=horas)
+        correos.sort(key=_clave_fecha, reverse=True)
 
-        resumen = None
-        try:
-            resumen = ProveedorIA.desde_entorno(self.config).resumir(correos, horas)
-        except SinRedError as exc:
-            self.consola.print(f"[yellow]Sin IA: {escape(str(exc))}[/yellow]")
+        resumen = self._resumir(carpeta, correos, horas) if correos else None
 
         destino = Path(self.definicion.destino).expanduser()
         archivo = destino / f"resumen-{datetime.now():%Y-%m-%d}.md"

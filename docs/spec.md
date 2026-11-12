@@ -3,7 +3,7 @@
 1. **Para quién:** un estudiante de DAM que revisa su Gmail todos los días.
 2. **Problema:** pierde tiempo mirando correo y separando spam a mano.
 3. **Órdenes:** `buzon`, `version`, `revisar`, `listar`, `acciones`, `validar`, `ejecutar`.
-4. **Acción 1:** `resumen-24h` — correos importantes de las últimas 24 h + resumen con IA.
+4. **Acción 1:** `resumen-24h` — resumen con IA del contenido de los correos de las últimas 24 h (urgente · para leer · ignorar).
 5. **Acción 2:** `listar-spam` — tabla de la carpeta de spam (funciona sin IA y sin red).
 6. **Acción 3:** `limpiar-spam` — mueve todo el spam a la papelera, con confirmación.
 7. **Acción 4:** `guardar-resumen` — escribe el resumen del día en `~/resumenes/*.md`.

@@ -21,7 +21,7 @@
   "acciones": [
     {
       "nombre": "resumen-24h",
-      "descripcion": "Resume los correos importantes de las últimas 24 horas",
+      "descripcion": "Resume con IA el contenido de los correos de las últimas 24 horas",
       "tipo": "resumen-ia",
       "horas": 24
     },

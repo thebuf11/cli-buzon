@@ -223,7 +223,7 @@ OK: 2 correo(s) movidos a la papelera.
   "acciones": [
     {
       "nombre": "resumen-24h",              // minúsculas y guiones, único
-      "descripcion": "Resume los correos importantes de las últimas 24 horas",
+      "descripcion": "Resume con IA el contenido de los correos de las últimas 24 horas",
       "tipo": "resumen-ia",
       "horas": 24
     }
@@ -235,7 +235,7 @@ Tipos de acción:
 
 | `tipo` | Campos | Qué hace |
 |--------|--------|----------|
-| `resumen-ia` | `horas` (24) | Correos importantes + resumen con IA |
+| `resumen-ia` | `horas` (24) | Tabla de la ventana + resumen con IA del texto de los correos (urgente · para leer · ignorar) |
 | `listar` | `carpeta`, `horas` (opcional; sin él, todo) | Tabla de una carpeta |
 | `mover-papelera` | `carpeta`, `confirmar` | Mueve la carpeta a la papelera |
 | `exportar` | `horas`, `destino` | Escribe un Markdown con el resumen |
@@ -305,7 +305,7 @@ src/buzon/
 
 ## Limitaciones conocidas
 
-- El resumen con IA usa remitente, asunto y fecha; solo `revisar` descarga el cuerpo (al pedirlo con `v N`).
+- El resumen con IA lee el texto de hasta 30 correos (importantes y recientes primero), recortado y sin el hilo citado; el resto entra solo con remitente y asunto. Ese texto se envía al servicio de `IA_API_URL`: usa el modelo local del centro si no quieres que salga de la red.
 - «Importante» depende de la marca `\Important` de Gmail. Si Gmail no ha
   marcado nada, se muestran todos los correos de la ventana.
 - Gmail puede tardar un poco en reflejar en IMAP los cambios hechos en la web.
