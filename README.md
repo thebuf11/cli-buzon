@@ -67,12 +67,29 @@ uv tool install git+https://github.com/thebuf11/cli-buzon
 
 Desinstalar: `uv tool uninstall cli-buzon`.
 
+Instalado desde GitHub no hay carpeta del proyecto. Crea tu configuración con:
+
+```bash
+buzon init        # crea acciones.json y .env en tu carpeta de usuario y explica los pasos
+buzon validar
+```
+
+La carpeta de usuario es `%APPDATA%\buzon` en Windows, `~/.config/buzon` en
+Linux y `~/Library/Application Support/buzon` en macOS. `init` nunca
+sobrescribe nada.
+
 Una vez instalado, `buzon` funciona **desde cualquier carpeta**. Busca su
-configuración en este orden: `--config RUTA` → variable `BUZON_CONFIG` →
-`./acciones.json` de la carpeta actual → el `acciones.json` del proyecto.
-`.env`, `credentials.json` y `token.json` se leen de la misma carpeta que ese
-`acciones.json`. Con `--editable`, los cambios en el código se aplican sin
-reinstalar.
+configuración en este orden:
+
+1. `--config RUTA`
+2. la variable `BUZON_CONFIG`
+3. `./acciones.json` de la carpeta actual
+4. el de tu carpeta de usuario (`buzon init`)
+5. el `acciones.json` del proyecto (instalación `--editable`)
+
+`.env`, `credentials.json` y `token.json` se leen de la misma carpeta que el
+`acciones.json` elegido. Con `--editable`, los cambios en el código se aplican
+sin reinstalar.
 
 ## Configurar Gmail (una sola vez)
 
@@ -112,7 +129,9 @@ bloqueada. Se elige en `acciones.json`:
    Rellena nombre y correo, y en **Usuarios de prueba** añade tu dirección de Gmail.
 4. *APIs y servicios → Credenciales → Crear credenciales → ID de cliente de OAuth*
    → tipo de aplicación **App de escritorio**.
-5. **Descarga el JSON** y guárdalo como `cli-buzon/credentials.json`.
+5. **Descarga el JSON** y guárdalo como `credentials.json` **en la misma
+   carpeta que tu `acciones.json`**: la del proyecto (`cli-buzon/`) o la de
+   `buzon init`.
 6. Ejecuta `buzon revisar`: se abre el navegador, eliges tu cuenta y aceptas.
    Como la app está «en pruebas», Google avisa de que no está verificada:
    pulsa *Continuar*. El permiso queda en `token.json` y no se vuelve a pedir.
@@ -359,23 +378,46 @@ src/buzon/
 ├── cli.py          # interfaz Typer: órdenes, opciones, códigos de salida
 ├── config.py       # lee y VALIDA acciones.json y .env
 ├── motor.py        # Motor: ejecuta una acción sobre su carpeta
-├── acciones.py     # clases Listar, ResumenIA, MoverPapelera, Exportar, Revisar
+├── acciones.py     # clases Listar, ResumenIA, ClasificarIA, MoverPapelera, Exportar, Revisar
 ├── imap_client.py  # conexión IMAP + parser de correos (stdlib)
 ├── gmail_api.py    # alternativa: API REST de Gmail por HTTPS + OAuth (stdlib)
-├── ia.py           # cliente HTTP compatible con OpenAI
-├── salida.py       # tablas Rich (texto de correo escapado)
-└── errores.py      # excepciones propias
+├── ia.py           # cliente HTTP compatible con OpenAI: prompts, presupuesto, clasificación
+├── salida.py       # tablas Rich (texto de correo escapado) y confirmar() [s/N]
+├── errores.py      # excepciones propias
+└── plantillas/     # acciones.json y .env que copia «buzon init»
 ```
+
+Documentación del diseño:
+
+- `docs/spec.md`: qué hace y qué no hace la herramienta.
+- `docs/adr/`: decisiones de diseño.
+  - 0001: configuración externa.
+  - 0002: API de Gmail.
+  - 0003: capa de IA.
+- `docs/prompts.md`: cómo se ha usado la IA para programar y qué prompts envía la CLI.
 
 ## Limitaciones conocidas
 
-- El resumen con IA lee el texto de hasta 30 correos (importantes y recientes primero), recortado y sin el hilo citado; el resto entra solo con remitente y asunto. Ese texto se envía al servicio de `IA_API_URL`: usa el modelo local del centro si no quieres que salga de la red.
+- El resumen con IA lee el texto de hasta 30 correos (importantes y recientes
+  primero), recortado y sin el hilo citado; el resto entra solo con remitente y
+  asunto. Como mucho entran 60 correos en el resumen y 35 en
+  `limpiar-prescindibles`. Ese texto se envía al servicio de `IA_API_URL`: usa
+  el modelo local del centro si no quieres que salga de la red.
+- Un modelo pequeño puede clasificar mal. Por eso la clasificación siempre se
+  enseña antes de pedir confirmación, y con `--si` no hay nadie que la revise.
 - «Importante» depende de la marca `\Important` de Gmail. Si Gmail no ha
   marcado nada, se muestran todos los correos de la ventana.
 - Gmail puede tardar un poco en reflejar en IMAP los cambios hechos en la web.
 
 ## Roadmap
 
-- [ ] Pruebas de los casos feos restantes (sin red, credenciales malas)
+- [x] Configuración en la carpeta de usuario y `buzon init` (instalación desde GitHub)
+- [x] Validación estricta de `acciones.json` con sugerencias
+- [x] Resumen con IA del contenido de los correos, `clasificar-ia` y `comprobar-ia`
+- [x] Modo sin red o sin IA en todas las acciones (con tests)
+- [x] Confirmaciones `[s/N]` y errores sin traceback, también sin teclado
+- [x] Configuración de OpenCode: permisos, skill, `/nueva-accion` y subagente revisor
+- [x] Revisión de código y corrección de sus hallazgos (ver `docs/prompts.md`)
+- [ ] Tests del cliente IMAP sin red y con credenciales malas (ya los tiene la API de Gmail)
 - [ ] GitHub Actions en Ubuntu, Windows y macOS
 - [ ] Release v1.0 con changelog
