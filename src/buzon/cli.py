@@ -82,11 +82,19 @@ def _sin_teclado(exc: BaseException) -> bool:
     """
     if isinstance(exc, KeyboardInterrupt):
         return False
-    return isinstance(exc.__context__, EOFError) or not sys.stdin.isatty()
+    if isinstance(exc.__context__, EOFError):
+        return True
+    # sys.stdin puede ser None (pythonw) y, en Windows, NUL dice ser una terminal.
+    es_terminal = getattr(sys.stdin, "isatty", None)
+    return not (callable(es_terminal) and es_terminal())
+
+
+PISTA_EJECUTAR = "o añade --si para que no pregunte"
+PISTA_FLUJO = "o, para scripts, usa «buzon ejecutar limpiar-spam --si»"
 
 
 @contextmanager
-def _errores_controlados(pista_sin_teclado: str = "o añade --si para que no pregunte"):
+def _errores_controlados(pista_sin_teclado: str = PISTA_EJECUTAR):
     """Traduce los errores previsibles a un mensaje y código 1, nunca a un traceback."""
     try:
         yield
@@ -108,7 +116,8 @@ def _errores_controlados(pista_sin_teclado: str = "o añade --si para que no pre
 def _flujo_por_defecto(config: Configuracion) -> int:
     """Lo que pasa al escribir solo ``buzon``."""
     nombres = {accion.nombre for accion in config.acciones}
-    with Motor(config, consola) as motor, _errores_controlados():
+    # «buzon» a secas no tiene --si: la pista lleva a la orden que sí lo tiene.
+    with Motor(config, consola) as motor, _errores_controlados(PISTA_FLUJO):
         if "resumen-24h" in nombres:
             motor.ejecutar("resumen-24h")
         else:
@@ -194,8 +203,12 @@ def init(
         else:
             consola.print(f"[yellow]Ya existe[/yellow] {escape(str(ruta))} (no se ha tocado)")
     consola.print(
-        "\nSiguiente paso: rellena el [bold].env[/bold] con tus credenciales "
-        "y comprueba la configuración con [bold]buzon validar[/bold]."
+        "\n[bold]Siguientes pasos[/bold]\n"
+        f"1. Rellena {escape(str(destino / '.env'))}: GMAIL_USUARIO y GMAIL_APP_PASSWORD "
+        "(contraseña de aplicación de Gmail) y, si quieres IA, IA_API_URL.\n"
+        "2. Comprueba la configuración: [bold]buzon validar[/bold] y [bold]buzon comprobar-ia[/bold].\n"
+        "Si tu red bloquea IMAP (puerto 993), pon \"proveedor\": \"gmail-api\" en acciones.json "
+        f"y guarda el credentials.json de Google Cloud en {escape(str(destino))} (ver README)."
     )
 
 
@@ -231,16 +244,31 @@ def validar(ctx: typer.Context) -> None:
         consola.print(f"[yellow]Aviso:[/yellow] {escape(aviso)}")
 
 
+URL_NO_VALIDA = "(URL no válida: debe empezar por http:// o https://)"
+
+
 def _url_sin_secretos(url: str) -> str:
-    """Quita usuario, contraseña y parámetros: algunos servicios ponen la clave en la URL."""
+    """Enseña de la URL solo esquema, servidor, puerto y el último tramo de la ruta.
+
+    Algunos servicios meten la clave en el usuario/contraseña, en los
+    parámetros o en la propia ruta (``/v1/CLAVE/chat``). Ante cualquier cosa
+    rara (sin esquema, puerto que no es un número) no se enseña nada de ella.
+    """
     if not url:
         return ""
-    partes = urlsplit(url)
-    servidor = partes.hostname or ""
-    if partes.port:
-        servidor += f":{partes.port}"
-    oculto = " (parámetros ocultos)" if partes.query or partes.username else ""
-    return f"{partes.scheme}://{servidor}{partes.path}{oculto}"
+    try:
+        partes = urlsplit(url.strip())
+        puerto = partes.port  # lanza ValueError con «:abc» o «:99999»
+    except ValueError:
+        return URL_NO_VALIDA
+    if partes.scheme not in {"http", "https"} or not partes.hostname:
+        return URL_NO_VALIDA
+
+    servidor = partes.hostname + (f":{puerto}" if puerto else "")
+    tramos = [tramo for tramo in partes.path.split("/") if tramo]
+    ruta = f"/…/{tramos[-1]}" if len(tramos) > 1 else partes.path
+    oculto = " (credenciales o parámetros ocultos)" if partes.query or partes.username or partes.password else ""
+    return f"{partes.scheme}://{servidor}{ruta}{oculto}"
 
 
 @app.command("comprobar-ia")
@@ -259,14 +287,16 @@ def comprobar_ia(ctx: typer.Context) -> None:
 
     inicio = time.perf_counter()
     try:
-        with consola.status("Preguntando al modelo…"):
-            respuesta = proveedor.probar()
-    except SinRedError as exc:
-        error.print(f"[red]La IA no está disponible:[/red] {escape(str(exc))}")
+        with _errores_controlados(), consola.status("Preguntando al modelo…"):
+            try:
+                respuesta = proveedor.probar()
+            except SinRedError as exc:
+                raise SinRedError(f"La IA no está disponible: {exc}") from exc
+    except typer.Exit:
         error.print(
             "[dim]Las acciones sin IA (listar, revisar, limpiar-spam…) siguen funcionando.[/dim]"
         )
-        raise typer.Exit(1) from exc
+        raise
 
     segundos = time.perf_counter() - inicio
     consola.print(

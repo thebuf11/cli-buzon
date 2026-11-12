@@ -1,7 +1,7 @@
 {
   "version": 1,
   "cuenta": {
-    "proveedor": "gmail-api",
+    "proveedor": "imap",
     "servidor": "imap.gmail.com",
     "puerto": 993,
     "usuario_env": "GMAIL_USUARIO",

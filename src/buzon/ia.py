@@ -291,6 +291,9 @@ class ProveedorIA:
             raise SinRedError(
                 "No hay IA configurada: define IA_API_URL (y IA_API_KEY si tu servicio la pide) en .env."
             )
+        # «localhost:11434/v1» o «user:pass@host» sin http:// parecen URLs pero no lo son.
+        if not self.url.lower().startswith(("http://", "https://")):
+            raise SinRedError("IA_API_URL no es una URL válida: debe empezar por http:// o https://.")
 
     def resumir(
         self,
@@ -348,12 +351,17 @@ class ProveedorIA:
         if self.clave:
             cabeceras["Authorization"] = f"Bearer {self.clave}"
 
-        peticion = urllib.request.Request(
-            self.url,
-            data=json.dumps(carga).encode("utf-8"),
-            headers=cabeceras,
-            method="POST",
-        )
+        try:
+            peticion = urllib.request.Request(
+                self.url,
+                data=json.dumps(carga).encode("utf-8"),
+                headers=cabeceras,
+                method="POST",
+            )
+        except ValueError as exc:  # «host/v1» sin http://, esquema desconocido…
+            raise SinRedError(
+                "IA_API_URL no es una URL válida: debe empezar por http:// o https://."
+            ) from exc
 
         try:
             with urllib.request.urlopen(peticion, timeout=timeout or self.timeout) as respuesta:

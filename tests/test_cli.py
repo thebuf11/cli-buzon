@@ -114,3 +114,12 @@ def test_validar_muestra_avisos_sin_fallar(tmp_path):
     resultado = runner.invoke(app, ["--config", str(ruta), "validar"])
     assert resultado.exit_code == 0
     assert "Aviso" in resultado.output
+
+
+def test_init_explica_credenciales_y_la_plantilla_usa_imap(tmp_path):
+    destino = tmp_path / "config"
+    resultado = runner.invoke(app, ["init", "--carpeta", str(destino)])
+    texto = " ".join(resultado.output.split())
+    assert "GMAIL_APP_PASSWORD" in texto
+    assert "credentials.json" in texto
+    assert json.loads((destino / "acciones.json").read_text(encoding="utf-8"))["cuenta"]["proveedor"] == "imap"

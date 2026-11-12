@@ -124,3 +124,36 @@ def test_ejecutar_con_si_no_pregunta(entorno):
     resultado = runner.invoke(app, ["--config", ruta, "ejecutar", "vaciar-boletines", "--si"], input="")
     assert resultado.exit_code == 0
     assert cliente.movidos == ["1", "2"]
+
+
+def test_sin_teclado_con_stdin_none_no_revienta(monkeypatch):
+    from buzon import cli
+
+    monkeypatch.setattr(cli.sys, "stdin", None)  # pythonw
+    assert cli._sin_teclado(typer.Abort()) is True
+
+
+def test_flujo_por_defecto_sin_teclado_no_sugiere_una_opcion_que_no_existe(tmp_path, monkeypatch):
+    from buzon.cli import PISTA_FLUJO
+
+    ruta = tmp_path / "acciones.json"
+    ruta.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "acciones": [
+                    {"nombre": "listar-spam", "descripcion": "S", "tipo": "listar", "carpeta": "spam"},
+                    {"nombre": "limpiar-spam", "descripcion": "L", "tipo": "mover-papelera", "carpeta": "spam", "confirmar": True},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    cliente = ClienteFalso()
+    monkeypatch.setattr(Motor, "cliente", lambda self: cliente)
+    resultado = runner.invoke(app, ["--config", str(ruta)], input="")
+    assert resultado.exit_code == 1
+    assert cliente.movidos == []
+    texto = salida(resultado)
+    assert "buzon ejecutar limpiar-spam --si" in texto
+    assert "añade --si" not in texto

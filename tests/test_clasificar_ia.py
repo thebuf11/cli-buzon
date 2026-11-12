@@ -271,7 +271,8 @@ def test_comprobar_ia_responde_y_no_muestra_secretos(tmp_path, monkeypatch, sin_
     assert "la IA responde" in resultado.output
     for secreto in ("secreto", "CLAVE123", "MUYSECRETA"):
         assert secreto not in resultado.output
-    assert "ia.ejemplo.com/v1/chat/completions" in resultado.output
+    # Se ve el servidor y el último tramo de la ruta; el resto puede llevar claves.
+    assert "https://ia.ejemplo.com/…/completions" in resultado.output
 
 
 def test_ia_real_con_respuesta_ininteligible_no_borra_nada(tmp_path, monkeypatch):
@@ -301,3 +302,42 @@ def test_prompt_clasificar_cabe_en_el_presupuesto_con_el_maximo_de_correos():
     prompt = ia._prompt_clasificar(correos, textos)
     assert len(prompt) < ia.PRESUPUESTO_CARACTERES + 2000
     assert prompt.count("<<<") == ia.MAX_CORREOS_CLASIFICAR  # los cuerpos siguen entrando
+
+
+# ── _url_sin_secretos y comprobar-ia con URLs raras ───────────
+
+from buzon.cli import URL_NO_VALIDA, _url_sin_secretos  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("url", "esperado"),
+    [
+        ("http://localhost:11434/v1/chat/completions", "http://localhost:11434/…/completions"),
+        ("https://ia.ejemplo.com/v1/chat/completions?key=CLAVE", "https://ia.ejemplo.com/…/completions (credenciales o parámetros ocultos)"),
+        ("https://yo:secreto@ia.ejemplo.com/api", "https://ia.ejemplo.com/api (credenciales o parámetros ocultos)"),
+        ("https://ia.ejemplo.com/v1/CLAVESECRETA/chat", "https://ia.ejemplo.com/…/chat"),
+        ("user:pass@host/v1", URL_NO_VALIDA),  # sin esquema: antes salía «user://pass@host/v1»
+        ("http://host:abc/v1", URL_NO_VALIDA),  # antes: traceback por ValueError
+        ("http://host:99999/v1", URL_NO_VALIDA),
+        ("ftp://host/v1", URL_NO_VALIDA),
+    ],
+)
+def test_url_sin_secretos(url, esperado):
+    assert _url_sin_secretos(url) == esperado
+
+
+@pytest.mark.parametrize("url", ["user:pass@host/v1", "http://host:abc/v1"])
+def test_comprobar_ia_con_url_rota_no_da_traceback_ni_muestra_la_contrasena(tmp_path, monkeypatch, sin_entorno_ia, url):
+    monkeypatch.setenv("IA_API_URL", url)
+    resultado = runner.invoke(app, ["--config", config_minima(tmp_path), "comprobar-ia"])
+    salida = resultado.output + (getattr(resultado, "stderr", "") or "")
+    assert resultado.exit_code == 1
+    assert "pass" not in salida
+    assert "Traceback" not in salida
+    assert not isinstance(resultado.exception, ValueError)
+
+
+def test_resumen_con_url_sin_esquema_explica_el_error(monkeypatch):
+    proveedor = ProveedorIA("localhost:11434/v1/chat/completions", "", "llama3")
+    with pytest.raises(SinRedError, match="no es una URL válida"):
+        proveedor.resumir([correo("1", "Hola")], 24)
