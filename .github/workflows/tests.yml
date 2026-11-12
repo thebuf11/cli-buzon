@@ -1,0 +1,73 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash  # también en Windows (Git Bash): los mismos pasos en los tres sistemas
+    env:
+      PYTHONUTF8: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Ningún secreto en el repositorio
+        run: |
+          if git ls-files | grep -E '(^|/)(\.env(\..*)?|credentials[^/]*\.json|client_secret[^/]*\.json|token[^/]*\.json|[^/]*\.(pem|key|p12))$' | grep -v -E '(^|/)\.env\.example$'; then
+            echo "::error::Hay ficheros con secretos en el repositorio"
+            exit 1
+          fi
+
+      - name: Dependencias (exactamente las de uv.lock)
+        run: uv sync --locked
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Instalar la CLI como herramienta (uv tool install)
+        run: |
+          uv tool install .
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Usarla como lo haría un compañero
+        run: |
+          cd "$RUNNER_TEMP"
+          buzon --help
+          buzon version
+          buzon init --carpeta "$RUNNER_TEMP/Configuración de prueba"
+          buzon --config "$RUNNER_TEMP/Configuración de prueba/acciones.json" validar
+
+          # Un acciones.json roto debe salir con código 3.
+          echo '{ "version": 1, "acciones": [' > roto.json
+          set +e
+          buzon --config roto.json validar
+          codigo=$?
+          set -e
+          test "$codigo" -eq 3
+
+      - name: Desinstalar y comprobar que la orden desaparece
+        run: |
+          uv tool uninstall cli-buzon
+          if command -v buzon; then
+            echo "::error::buzon sigue instalado tras uv tool uninstall"
+            exit 1
+          fi
