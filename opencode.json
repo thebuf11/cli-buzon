@@ -1,0 +1,50 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permissions": [
+    { "action": "edit", "resource": "*", "effect": "ask" },
+    { "action": "webfetch", "resource": "*", "effect": "ask" },
+    { "action": "external_directory", "resource": "*", "effect": "ask" },
+
+    { "action": "read", "resource": "*.env", "effect": "deny" },
+    { "action": "read", "resource": "*.env.*", "effect": "deny" },
+    { "action": "read", "resource": "*.env.example", "effect": "allow" },
+    { "action": "read", "resource": "*credentials*.json", "effect": "deny" },
+    { "action": "read", "resource": "*client_secret*.json", "effect": "deny" },
+    { "action": "read", "resource": "*token*.json", "effect": "deny" },
+    { "action": "edit", "resource": "*.env", "effect": "deny" },
+    { "action": "edit", "resource": "*credentials*.json", "effect": "deny" },
+    { "action": "edit", "resource": "*token*.json", "effect": "deny" },
+
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "shell", "resource": "uv sync *", "effect": "allow" },
+    { "action": "shell", "resource": "uv run pytest *", "effect": "allow" },
+    { "action": "shell", "resource": "uv run buzon --help *", "effect": "allow" },
+    { "action": "shell", "resource": "uv run buzon version *", "effect": "allow" },
+    { "action": "shell", "resource": "uv run buzon validar *", "effect": "allow" },
+    { "action": "shell", "resource": "uv run buzon acciones *", "effect": "allow" },
+    { "action": "shell", "resource": "uv run buzon --config * validar *", "effect": "allow" },
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git log *", "effect": "allow" },
+    { "action": "shell", "resource": "git show *", "effect": "allow" },
+    { "action": "shell", "resource": "git commit *", "effect": "deny" },
+    { "action": "shell", "resource": "git push *", "effect": "deny" },
+    { "action": "shell", "resource": "git reset *", "effect": "deny" },
+    { "action": "shell", "resource": "* --si *", "effect": "deny" },
+    { "action": "shell", "resource": "cat *.env*", "effect": "deny" },
+    { "action": "shell", "resource": "type *.env*", "effect": "deny" },
+
+    { "action": "skill", "resource": "acciones-json", "effect": "allow" },
+    { "action": "subagent", "resource": "revisor", "effect": "allow" }
+  ],
+  "mcp": {
+    "servers": {
+      "context7": {
+        "type": "remote",
+        "url": "https://mcp.context7.com/mcp",
+        "oauth": false,
+        "disabled": true
+      }
+    }
+  }
+}
