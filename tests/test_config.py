@@ -246,3 +246,23 @@ def test_mover_papelera_sin_confirmar_da_aviso(tmp_path):
     avisos = cargar_configuracion(escribir(tmp_path, datos)).avisos
     assert len(avisos) == 1
     assert "limpiar-spam" in avisos[0]
+
+
+def test_errata_en_version_sugiere_el_nombre(tmp_path):
+    # Antes: «version: se esperaba 1, se encontró None».
+    datos = base()
+    datos["versoin"] = datos.pop("version")
+    with pytest.raises(ConfigError, match="¿Quisiste decir «version»"):
+        cargar_configuracion(escribir(tmp_path, datos))
+
+
+def test_clave_repetida_es_un_error(tmp_path):
+    # json se quedaría con el último «tipo» y una acción de lectura pasaría a borrar.
+    ruta = tmp_path / "acciones.json"
+    ruta.write_text(
+        '{"version": 1, "acciones": [{"nombre": "x", "descripcion": "X", '
+        '"tipo": "listar", "tipo": "mover-papelera"}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="«tipo» aparece dos veces"):
+        cargar_configuracion(ruta)

@@ -52,9 +52,19 @@ def test_config_inexistente(tmp_path):
 def test_funciona_desde_cualquier_carpeta(tmp_path, monkeypatch):
     from buzon import config
 
+    # Un «proyecto» falso: así el test no carga el .env real del alumno.
+    proyecto = tmp_path / "proyecto"
+    proyecto.mkdir()
+    (proyecto / "acciones.json").write_text(
+        json.dumps({"version": 1, "acciones": [{"nombre": "spam", "descripcion": "S", "tipo": "listar"}]}),
+        encoding="utf-8",
+    )
+    otra = tmp_path / "otra-carpeta"
+    otra.mkdir()
     monkeypatch.delenv("BUZON_CONFIG", raising=False)
     monkeypatch.setattr(config, "carpeta_usuario", lambda: tmp_path / "usuario")
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config, "RAIZ_PROYECTO", proyecto)
+    monkeypatch.chdir(otra)
     resultado = runner.invoke(app, ["validar"])
     assert resultado.exit_code == 0
     assert "acciones.json" in resultado.output

@@ -264,6 +264,20 @@ def _leer_accion(datos: dict, contexto: str) -> Accion:
     )
 
 
+def _sin_claves_repetidas(pares: list[tuple[str, object]]) -> dict:
+    """``json`` se queda en silencio con la última de dos claves iguales; aquí es un error.
+
+    ``{"tipo": "listar", "tipo": "mover-papelera"}`` convertiría una acción de
+    solo lectura en una que borra sin que se note al leer el fichero.
+    """
+    resultado: dict = {}
+    for clave, valor in pares:
+        if clave in resultado:
+            raise ConfigError(f"«{clave}» aparece dos veces en el mismo objeto; deja solo una.")
+        resultado[clave] = valor
+    return resultado
+
+
 def cargar_configuracion(ruta: str | Path) -> Configuracion:
     """Lee y valida ``acciones.json``. Lanza :class:`ConfigError` si algo falla."""
     ruta = Path(ruta)
@@ -279,7 +293,7 @@ def cargar_configuracion(ruta: str | Path) -> Configuracion:
         raise ConfigError(f"No se pudo leer «{ruta}»: {exc.strerror or exc}") from exc
 
     try:
-        datos = json.loads(texto)
+        datos = json.loads(texto, object_pairs_hook=_sin_claves_repetidas)
     except json.JSONDecodeError as exc:
         raise ConfigError(
             f"JSON mal formado en «{ruta.name}», línea {exc.lineno}, columna {exc.colno}: {exc.msg}"
@@ -288,9 +302,10 @@ def cargar_configuracion(ruta: str | Path) -> Configuracion:
     if not isinstance(datos, dict):
         raise ConfigError("La raíz del fichero debe ser un objeto JSON {...}")
 
+    # Primero las erratas: con «"versoin": 1» el mensaje útil es «¿quisiste decir version?».
+    _comprobar_campos(datos, CAMPOS_RAIZ, "")
     if datos.get("version") != 1:
         raise ConfigError(f"version: se esperaba 1, se encontró {datos.get('version')!r}")
-    _comprobar_campos(datos, CAMPOS_RAIZ, "")
 
     cuenta = _leer_cuenta(datos)
     ia = _leer_ia(datos)
