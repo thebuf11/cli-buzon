@@ -333,6 +333,25 @@ uv run buzon --help
 uv run pytest           # pruebas sin red ni cuenta real
 ```
 
+### Con OpenCode
+
+El repositorio trae la configuración del agente. `AGENTS.md` tiene las reglas
+y la tabla de herramientas.
+
+- `opencode.json`: permisos. Editar pregunta antes; el agente no puede leer
+  `.env` ni las credenciales de Google y no puede hacer `git commit` ni `push`.
+- `/nueva-accion <qué quieres>`: añade una acción a `acciones.json` usando la
+  skill `acciones-json` y la valida con `buzon validar`.
+- `scripts/revisar.sh`: revisión de solo lectura con el subagente `revisor`
+  antes de cada commit.
+
+```bash
+scripts/revisar.sh            # cambios sin commitear
+scripts/revisar.sh HEAD~3     # los últimos 3 commits
+```
+
+En Windows, ejecútalo desde Git Bash.
+
 Estructura:
 
 ```

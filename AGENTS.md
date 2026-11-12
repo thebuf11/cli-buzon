@@ -29,3 +29,20 @@ uv run pytest
 - Los textos que vienen de correos se escapan antes de pasarlos a Rich.
 - No añadas dependencias sin justificarlo: la librería estándar cubre IMAP
   (`imaplib`) y HTTP (`urllib`).
+- **No ejecutes `buzon ejecutar`, `buzon revisar` ni el flujo `buzon` sin
+  `--simular`**: trabajan sobre el correo real del alumno. `--si` está
+  bloqueado en `opencode.json`.
+
+## Herramientas de OpenCode en este repo
+
+| Qué | Dónde | Para qué |
+|---|---|---|
+| Permisos | `opencode.json` | Editar pregunta; leer `.env`, `credentials*.json` y `token*.json` está prohibido; `git commit`/`push` bloqueados |
+| Skill `acciones-json` | `.opencode/skills/acciones-json/SKILL.md` | Esquema, campos por tipo y reglas de seguridad de `acciones.json`. Cárgala antes de tocar ese fichero |
+| Comando `/nueva-accion` | `.opencode/commands/nueva-accion.md` | `/nueva-accion vaciar la carpeta Boletines cada semana` añade y valida la acción |
+| Subagente `revisor` | `.opencode/agents/revisor.md` | Revisión de solo lectura antes de cada commit |
+| Script | `scripts/revisar.sh` | Lanza el revisor sin abrir la interfaz: `opencode run --agent revisor` |
+| MCP `context7` | `opencode.json` → `mcp.servers` | Documentación de librerías. Está desactivado (`"disabled": true`); actívalo solo cuando haga falta |
+
+Antes de proponer un commit, pasa el revisor (`/review` o `scripts/revisar.sh`).
+Si cambias los tipos de acción, actualiza también la skill.
