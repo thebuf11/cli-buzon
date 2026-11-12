@@ -20,7 +20,9 @@ from email.utils import parsedate_to_datetime
 from .errores import AccionNoValida, CredencialesError, SinRedError
 
 MESES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-PATRON_ETIQUETAS = re.compile(rb"X-GM-LABELS \(([^)]*)\)")
+# La lista acaba en el primer «)» que NO está dentro de comillas: una etiqueta
+# como "Clase (DAM)" no debe cortarla (si no, se perdería \Important).
+PATRON_ETIQUETAS = re.compile(rb'X-GM-LABELS \(((?:"(?:[^"\\]|\\.)*"|[^()"])*)\)')
 PATRON_LIST = re.compile(rb'\((?P<atributos>[^)]*)\) (?:"(?:[^"\\]|\\.)*"|NIL) (?P<nombre>.+)$')
 
 

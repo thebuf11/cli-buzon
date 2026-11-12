@@ -30,6 +30,16 @@ def test_etiquetas_de_gmail():
     assert _etiquetas(meta) == {"\\Inbox", "\\Important", "Trabajo"}
 
 
+def test_etiqueta_con_parentesis_no_pierde_important():
+    # Antes la lista se cortaba en el «)» de "Clase (DAM)" y \Important desaparecía:
+    # un correo importante podía acabar propuesto para borrar.
+    meta = (
+        b'3 (X-GM-LABELS ("Clase (DAM)" \\Important "\\Inbox" "Comillas \\"raras\\" (x)") '
+        b"BODY[HEADER.FIELDS (FROM SUBJECT DATE)] {42}"
+    )
+    assert _etiquetas(meta) == {"Clase (DAM)", "\\Important", "\\Inbox", 'Comillas "raras" (x)'}
+
+
 def test_correo_con_tildes_y_marcado_importante():
     cuerpo = (FIXTURES / "correo.eml").read_bytes()
     meta = (
