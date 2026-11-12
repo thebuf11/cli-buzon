@@ -245,6 +245,16 @@ Tipos de acción:
 literal. Añadir una acción nueva **no exige tocar el código**: se escribe en
 `acciones.json` y se ejecuta con `buzon ejecutar NOMBRE`.
 
+`buzon validar` es estricto, para que un descuido no pase en silencio:
+
+- Un campo con errata (`"hroas"`) es un error (código 3) con sugerencia:
+  «¿Quisiste decir «horas»?».
+- Un campo que el tipo no usa también es un error. Por ejemplo, `horas` en
+  `mover-papelera`, que mueve **toda** la carpeta, no solo las últimas horas.
+- Las claves que empiezan por `_` se ignoran y sirven de comentario
+  (JSON no tiene comentarios): `"_nota": "lo uso los lunes"`.
+- Si una acción `mover-papelera` no tiene `"confirmar": true`, `validar` avisa.
+
 ## Secretos y GitHub
 
 Estos ficheros dan acceso a tu Gmail y **nunca** se suben al repositorio:
