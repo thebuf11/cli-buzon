@@ -56,6 +56,16 @@ jobs:
           buzon init --carpeta "$RUNNER_TEMP/Configuración de prueba"
           buzon --config "$RUNNER_TEMP/Configuración de prueba/acciones.json" validar
 
+          # Modo demo instalado: demo.json tiene que ir dentro del paquete.
+          buzon --demo --config "$RUNNER_TEMP/Configuración de prueba/acciones.json" listar spam --horas 0 | grep "HAS GANADO"
+
+          # Sin IA configurada, comprobar-ia sale con 4 (y no con un traceback).
+          set +e
+          buzon --config "$RUNNER_TEMP/Configuración de prueba/acciones.json" comprobar-ia
+          codigo=$?
+          set -e
+          test "$codigo" -eq 4
+
           # Un acciones.json roto debe salir con código 3.
           echo '{ "version": 1, "acciones": [' > roto.json
           set +e
