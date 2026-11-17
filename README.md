@@ -195,6 +195,14 @@ bloqueada. Se elige en `acciones.json`:
    Como la app está «en pruebas», Google avisa de que no está verificada:
    pulsa *Continuar*. El permiso queda en `token.json` y no se vuelve a pedir.
 
+> **La sesión caduca a los 7 días** mientras la app de Google Cloud esté en modo
+> «Prueba». Verás «Tu sesión con Google ha caducado…». No es un fallo: `buzon`
+> borra `token.json` y, al volver a ejecutar la orden, se abre el navegador para
+> dar permiso otra vez. Pasar la app a «Producción» lo evita, pero Google pide
+> antes una página principal y una política de privacidad en un dominio
+> verificado. Si sale «Google rechazó el cliente OAuth», el problema es
+> `credentials.json`: descárgalo de nuevo.
+
 `credentials.json` y `token.json` están en `.gitignore`: **nunca** se suben.
 Para revocar el acceso: borra `token.json` y quita el permiso en
 <https://myaccount.google.com/permissions>.
