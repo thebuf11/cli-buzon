@@ -72,6 +72,22 @@ def _cabecera(nombre: str, valor: str) -> str:
     return f"{nombre}: {valor}\r\n"
 
 
+SESION_CADUCADA = (
+    "Tu sesión con Google ha caducado o se ha revocado. Es normal: si la app de Google Cloud "
+    "está en modo «Prueba», Google la caduca a los 7 días. He borrado {token}: vuelve a "
+    "ejecutar la orden y se abrirá el navegador para dar permiso otra vez."
+)
+CLIENTE_RECHAZADO = (
+    "Google rechazó el cliente OAuth de {credenciales} (¿lo borraste o le cambiaste el secreto "
+    "en Google Cloud?). Descárgalo de nuevo: Google Cloud → Google Auth Platform → Clientes → "
+    "Descargar, y guárdalo como {credenciales}."
+)
+
+
+class _TokenRechazado(CredencialesError):
+    """Google respondió 400/401 al pedir un token; quien llama sabe explicar por qué."""
+
+
 class _ReceptorCodigo(BaseHTTPRequestHandler):
     """Recibe la redirección de Google en http://127.0.0.1:<puerto>/?code=..."""
 
@@ -252,14 +268,19 @@ class ClienteGmailAPI:
         if "error" in resultado:
             raise CredencialesError(f"Google no dio permiso ({resultado['error']}). No se ha tocado nada.")
 
-        token = self._pedir_token(
-            {
-                "grant_type": "authorization_code",
-                "code": resultado["code"],
-                "redirect_uri": redireccion,
-                "code_verifier": verificador,
-            }
-        )
+        try:
+            token = self._pedir_token(
+                {
+                    "grant_type": "authorization_code",
+                    "code": resultado["code"],
+                    "redirect_uri": redireccion,
+                    "code_verifier": verificador,
+                }
+            )
+        except _TokenRechazado as exc:
+            raise CredencialesError(
+                CLIENTE_RECHAZADO.format(credenciales=self.ruta_credenciales.name)
+            ) from exc
         if "refresh_token" not in token:
             raise CredencialesError("Google no devolvió un refresh_token. Vuelve a intentarlo.")
         self._avisar("Sesión iniciada. El permiso queda guardado en " + self.ruta_token.name + ".")
@@ -279,7 +300,7 @@ class ClienteGmailAPI:
                 datos = json.loads(respuesta.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if exc.code in {400, 401}:  # invalid_grant, cliente borrado, sesión revocada…
-                raise CredencialesError(
+                raise _TokenRechazado(
                     "Google rechazó la sesión guardada o el cliente OAuth. Vuelve a ejecutar la orden "
                     "para iniciar sesión de nuevo."
                 ) from exc
@@ -306,6 +327,9 @@ class ClienteGmailAPI:
                 nuevo = self._pedir_token(
                     {"grant_type": "refresh_token", "refresh_token": self._token["refresh_token"]}
                 )
+            except _TokenRechazado as exc:
+                self._borrar_token()
+                raise CredencialesError(SESION_CADUCADA.format(token=self.ruta_token.name)) from exc
             except CredencialesError:
                 self._borrar_token()
                 raise

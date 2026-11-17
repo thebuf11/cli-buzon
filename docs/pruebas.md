@@ -1,6 +1,6 @@
 # Pruebas de `buzon`
 
-Hay **242 pruebas** con `pytest`. Ninguna sale a la red ni usa una cuenta real:
+Hay **243 pruebas** con `pytest`. Ninguna sale a la red ni usa una cuenta real:
 - el correo lo simulan clientes falsos (`ClienteFalso`, `ClienteDemo`);
 - la IA la simulan proveedores falsos que heredan de la clase abstracta `ProveedorIA`, o un `urlopen` falso;
 - cada prueba empieza sin las variables de entorno del alumno (`tests/conftest.py`).
@@ -26,7 +26,7 @@ uv run pytest -k simul  # solo las que tienen «simul» en el nombre (simular, s
 | `test_correo.py` | 8 | Leer remitente, asunto, fecha y la marca ⭐ de un correo |
 | `test_limpieza_texto.py` | 4 | El texto del correo al verlo: HTML, líneas vacías y caracteres de control |
 | `test_imap.py` | 13 | Cliente IMAP: sin red, credenciales malas, conexión perdida a medias |
-| `test_gmail_api.py` | 19 | API de Gmail: token caducado, cuota agotada, errores HTTP |
+| `test_gmail_api.py` | 20 | API de Gmail: token caducado, cuota agotada, errores HTTP |
 | `test_resumen_ia.py` | 16 | Resumen con IA: recorte del texto, presupuesto del prompt y la acción |
 | `test_clasificar_ia.py` | 38 | `limpiar-prescindibles`: que nunca se borre un ⭐, numeración mala de la IA, `comprobar-ia` |
 | `test_ia_centro.py` | 31 | IA del centro: URL base, certificado y un mensaje por cada fallo (401, 429, sin red…) |

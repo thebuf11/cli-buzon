@@ -202,8 +202,10 @@ def test_token_caducado_se_refresca_y_se_guarda(tmp_path, gmail):
 def test_refresco_rechazado_pide_volver_a_entrar(tmp_path, gmail):
     gmail.token_ok = False
     cliente, _ = crear_cliente(tmp_path, {"access_token": "viejo", "refresh_token": "r", "expira": 0})
-    with pytest.raises(CredencialesError):
+    with pytest.raises(CredencialesError, match="caducado") as error:
         cliente.listar("INBOX")
+    mensaje = str(error.value)
+    assert "7 días" in mensaje and "token.json" in mensaje and "vuelve a ejecutar" in mensaje
     assert not (tmp_path / "token.json").exists()
 
 
@@ -360,3 +362,20 @@ def test_mensaje_borrado_durante_el_listado_se_omite(tmp_path, gmail):
     ur.urlopen = con_404  # el fixture lo restaura al terminar
     cliente, _ = crear_cliente(tmp_path)
     assert [c.uid for c in cliente.listar("INBOX", horas=None)] == ["m2"]
+
+
+def test_cliente_oauth_rechazado_al_iniciar_sesion_explica_credentials(tmp_path, monkeypatch):
+    # El navegador da el código, pero Google rechaza el cliente al canjearlo (400 invalid_client).
+    def rechazar(*args, **kwargs):
+        raise urllib.error.HTTPError("https://oauth2.googleapis.com/token", 400, "invalid_client", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", rechazar)
+    (tmp_path / "credentials.json").write_text(
+        json.dumps({"installed": {"client_id": "id", "client_secret": "s"}}), encoding="utf-8"
+    )
+    cliente = ClienteGmailAPI(CUENTA, tmp_path, abrir_navegador=navegador_que_acepta(),
+                              avisar=lambda m: None)
+    with pytest.raises(CredencialesError, match="cliente OAuth de credentials.json") as error:
+        cliente.conectar()
+    assert "Descárgalo de nuevo" in str(error.value)
+    assert not (tmp_path / "token.json").exists()

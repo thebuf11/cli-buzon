@@ -8,6 +8,17 @@ Se generó a partir de `git log --reverse --format="%h %s"` y se corrigió a
 mano: se agruparon los commits por tema y se reescribieron para quien usa la
 herramienta, no para quien la programa.
 
+## [1.2.1] - 2026-11-17
+
+### Corregido
+
+- **Mensaje de sesión de Google caducada:** antes decía «Google rechazó la sesión
+  guardada o el cliente OAuth», sin explicar qué pasaba. Ahora distingue dos casos:
+  - **sesión caducada:** en modo «Prueba» pasa a los 7 días. Explica que ya se
+    borró `token.json` y que basta con volver a ejecutar la orden;
+  - **cliente OAuth rechazado:** dice cómo descargar `credentials.json` de nuevo.
+- El README explica la caducidad de 7 días y qué pide Google para publicar la app.
+
 ## [1.2.0] - 2026-11-17
 
 ### Añadido
@@ -178,6 +189,7 @@ Primera versión funcional (`23b0cb2`).
   IMAP 993.
 - Hook `pre-commit` que bloquea `.env`, `credentials.json` y `token.json`.
 
+[1.2.1]: https://github.com/thebuf11/cli-buzon/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/thebuf11/cli-buzon/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/thebuf11/cli-buzon/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/thebuf11/cli-buzon/compare/v1.0.0...v1.1.0
