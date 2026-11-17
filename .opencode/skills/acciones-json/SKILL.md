@@ -15,7 +15,7 @@ necesita una entrada en este fichero.
 {
   "version": 1,
   "cuenta": { "proveedor": "gmail-api" },
-  "ia": { "modelo_por_defecto": "qwen3.8-flash-next" },
+  "ia": { "modelo_por_defecto": "Qwen38-DualSpark-medium" },
   "acciones": [
     { "nombre": "listar-spam", "descripcion": "Lista el spam", "tipo": "listar", "carpeta": "spam" }
   ]

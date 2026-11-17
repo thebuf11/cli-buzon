@@ -58,7 +58,7 @@ IA_URL_ENV = "CENTRO_IA_URL"
 IA_CLAVE_ENV = "CENTRO_IA_KEY"
 IA_MODELO_ENV = "CENTRO_IA_MODELO"
 IA_CA_ENV = "CENTRO_IA_CA"
-IA_MODELO_POR_DEFECTO = "qwen3.8-flash-next"
+IA_MODELO_POR_DEFECTO = "Qwen38-DualSpark-medium"
 
 
 def _comprobar_campos(datos: dict, validos: frozenset[str], contexto: str) -> None:
