@@ -13,10 +13,11 @@
     "token_api": "token.json"
   },
   "ia": {
-    "url_env": "IA_API_URL",
-    "clave_env": "IA_API_KEY",
-    "modelo_env": "IA_MODELO",
-    "modelo_por_defecto": "llama3"
+    "url_env": "CENTRO_IA_URL",
+    "clave_env": "CENTRO_IA_KEY",
+    "modelo_env": "CENTRO_IA_MODELO",
+    "ca_env": "CENTRO_IA_CA",
+    "modelo_por_defecto": "qwen3.8-flash-next"
   },
   "acciones": [
     {
