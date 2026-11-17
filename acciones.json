@@ -17,7 +17,7 @@
     "clave_env": "CENTRO_IA_KEY",
     "modelo_env": "CENTRO_IA_MODELO",
     "ca_env": "CENTRO_IA_CA",
-    "modelo_por_defecto": "qwen3.8-flash-next"
+    "modelo_por_defecto": "Qwen38-DualSpark-medium"
   },
   "acciones": [
     {

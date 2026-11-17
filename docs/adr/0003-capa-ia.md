@@ -117,7 +117,7 @@ de certificado.
 
 - Las variables se llaman igual que en OpenCode: `CENTRO_IA_URL` (URL base,
   acabada en `/v1`), `CENTRO_IA_KEY`, `CENTRO_IA_MODELO` (opcional,
-  `qwen3.8-flash-next` por defecto) y `CENTRO_IA_CA`. Quien ya las tiene
+  `Qwen38-DualSpark-medium` por defecto, el mismo que OpenCode) y `CENTRO_IA_CA`. Quien ya las tiene
   exportadas para OpenCode no configura nada más.
 - `ProveedorIA.endpoint` añade `/chat/completions` solo si falta: valen la URL
   base del centro y la completa de otros servicios.

@@ -22,6 +22,7 @@
 
     { "action": "skill", "resource": "acciones-json", "effect": "allow" },
     { "action": "subagent", "resource": "revisor", "effect": "allow" },
+    { "action": "subagent", "resource": "probador-demo", "effect": "allow" },
 
     { "action": "read", "resource": "*.env", "effect": "deny" },
     { "action": "read", "resource": "*.env.*", "effect": "deny" },

@@ -8,6 +8,24 @@ Se generó a partir de `git log --reverse --format="%h %s"` y se corrigió a
 mano: se agruparon los commits por tema y se reescribieron para quien usa la
 herramienta, no para quien la programa.
 
+## [1.1.1] - 2026-11-17
+
+### Corregido
+
+- **Modelo por defecto de la IA del centro:** la 1.1.0 usaba
+  `qwen3.8-flash-next`, que no existe en el servidor del IES Simarro, y la IA
+  respondía 404 aunque la URL y la clave estuvieran bien. Ahora es
+  `Qwen38-DualSpark-medium`, el mismo que usa OpenCode. Con `CENTRO_IA_MODELO`
+  se puede elegir `-low` (rápido) o `-xhigh` (máxima calidad).
+- Los ejemplos de `.env.example`, la plantilla de `buzon init` y el README usan
+  la dirección real del centro: `https://ia.simarro/llmapi/v1`.
+
+### Añadido
+
+- Subagente de OpenCode **`probador-demo`** y `scripts/probar-demo.sh`: prueba
+  la CLI de punta a punta con `--demo` (16 pruebas) y da un veredicto antes de
+  una release. No puede editar ni tocar el correo real.
+
 ## [1.1.0] - 2026-11-17
 
 Para que el profesor pueda probarla en el centro, con la IA del centro y sin Gmail.
@@ -128,6 +146,7 @@ Primera versión funcional (`23b0cb2`).
   IMAP 993.
 - Hook `pre-commit` que bloquea `.env`, `credentials.json` y `token.json`.
 
+[1.1.1]: https://github.com/thebuf11/cli-buzon/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/thebuf11/cli-buzon/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/thebuf11/cli-buzon/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/thebuf11/cli-buzon/commit/23b0cb2

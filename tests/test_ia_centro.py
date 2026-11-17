@@ -172,7 +172,7 @@ def test_comprobar_ia_muestra_el_certificado_sin_su_contenido(tmp_path, monkeypa
     assert resultado.exit_code == 0, resultado.output
     assert "ca-ies-simarro.crt" in resultado.output
     assert "(existe)" in resultado.output
-    assert "qwen3.8-flash-next" in resultado.output  # modelo por defecto del centro
+    assert "Qwen38-DualSpark-medium" in resultado.output  # modelo por defecto del centro
     for secreto in ("CONTENIDO-DEL-CERTIFICADO", "sk-SECRETA"):
         assert secreto not in resultado.output
 
