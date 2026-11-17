@@ -42,7 +42,10 @@ uv run pytest
 | Comando `/nueva-accion` | `.opencode/commands/nueva-accion.md` | `/nueva-accion vaciar la carpeta Boletines cada semana` añade y valida la acción |
 | Subagente `revisor` | `.opencode/agents/revisor.md` | Revisión de solo lectura antes de cada commit |
 | Script | `scripts/revisar.sh` | Lanza el revisor sin abrir la interfaz: `opencode run --agent revisor` |
+| Subagente `probador-demo` | `.opencode/agents/probador-demo.md` | Usa la CLI de punta a punta con `--demo` (nunca el correo real) y da un veredicto antes de una release |
+| Script | `scripts/probar-demo.sh` | Lanza el probador sin abrir la interfaz: `opencode run --agent probador-demo` |
 | MCP `context7` | `opencode.json` → `mcp.servers` | Documentación de librerías. Está desactivado (`"disabled": true`); actívalo solo cuando haga falta |
 
 Antes de proponer un commit, pasa el revisor (`/review` o `scripts/revisar.sh`).
+Antes de una release o de pedir la prueba cruzada, pasa el probador (`@probador-demo` o `scripts/probar-demo.sh`).
 Si cambias los tipos de acción, actualiza también la skill.

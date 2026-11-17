@@ -428,6 +428,8 @@ y la tabla de herramientas.
   `.env` ni las credenciales de Google y no puede hacer `git commit` ni `push`.
 - `/nueva-accion <qué quieres>`: añade una acción a `acciones.json` usando la
   skill `acciones-json` y la valida con `buzon validar`.
+- `scripts/probar-demo.sh`: el subagente `probador-demo` usa la CLI de punta a punta
+  con `--demo` (16 pruebas, sin tocar el correo real) y dice si está lista para una release.
 - `scripts/revisar.sh`: revisión de solo lectura con el subagente `revisor`
   antes de cada commit.
 
