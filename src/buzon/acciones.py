@@ -7,6 +7,7 @@ no sabe qué hace cada acción: solo le pasa la definición al motor.
 from __future__ import annotations
 
 import re
+from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,9 +16,9 @@ from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
 
-from .config import Accion, Configuracion
+from .config import TIPOS_VALIDOS, Accion, Configuracion
 from .errores import AccionNoValida, BuzonError, SinRedError
-from .ia import MAX_CORREOS_CLASIFICAR, Clasificacion, ProveedorIA
+from .ia import MAX_CORREOS_CLASIFICAR, MAX_CORREOS_RESUMEN, SISTEMA, Clasificacion, ProveedorIA, _prompt
 from .salida import (
     LIMITE_FILAS,
     confirmar,
@@ -28,8 +29,11 @@ from .salida import (
 )
 
 
-class AccionBase:
-    """Comportamiento común: guarda la definición y accede al motor."""
+class AccionBase(ABC):
+    """Comportamiento común: guarda la definición y accede al motor.
+
+    Cada tipo de ``acciones.json`` es una subclase que implementa :meth:`ejecutar`.
+    """
 
     def __init__(self, definicion: Accion, motor: object) -> None:
         self.definicion = definicion
@@ -43,8 +47,9 @@ class AccionBase:
     def config(self) -> Configuracion:
         return self.motor.config
 
+    @abstractmethod
     def ejecutar(self, simular: bool = False, si: bool = False) -> int:
-        raise NotImplementedError
+        """Hace la acción y devuelve el código de salida (0 bien, 1 fallo)."""
 
     def _titulo(self, carpeta: str) -> str:
         if self.definicion.horas is None:
@@ -81,6 +86,24 @@ class AccionConIA(AccionBase):
         except SinRedError as exc:
             self.consola.print(f"[yellow]Sin IA: {escape(str(exc))}[/yellow]")
             return None
+
+    def _simular_envio(self, carpeta: str, correos: list, horas: int) -> None:
+        """Con ``--simular`` no se llama al modelo: se dice qué se enviaría y a dónde."""
+        proveedor = ProveedorIA.desde_entorno(self.config)
+        try:
+            proveedor.comprobar()
+        except SinRedError as exc:
+            self.consola.print(f"[yellow]Simulación: sin IA no se enviaría nada ({escape(str(exc))})[/yellow]")
+            return
+        textos = self._leer_textos(carpeta, correos)
+        caracteres = len(SISTEMA) + len(_prompt(correos, horas, textos))
+        enviados = min(len(correos), MAX_CORREOS_RESUMEN)  # _prompt no mete más
+        self.consola.print(
+            "[yellow]Simulación: no se ha llamado a la IA.[/yellow] Se enviarían "
+            f"{enviados} correos ({len(textos)} con su texto), unos {_miles(caracteres)} caracteres "
+            f"(~{_miles(caracteres // 4)} tokens), al modelo «{escape(proveedor.modelo or '?')}» "
+            f"de {escape(proveedor.destino())}."
+        )
 
     def _leer_textos(self, carpeta: str, correos: list) -> dict[str, str]:
         """Descarga el cuerpo de los correos más relevantes (importantes y recientes primero).
@@ -123,6 +146,9 @@ class AccionResumenIA(AccionConIA):
         correos.sort(key=_clave_fecha, reverse=True)
         mostrar_correos(self.consola, correos, f"Últimas {horas} h · {len(correos)} correos")
 
+        if simular:
+            self._simular_envio(carpeta, correos, horas)
+            return 0
         resumen = self._resumir(carpeta, correos, horas)
         if resumen is not None:
             self.consola.print(Panel(Markdown(resumen), title="Resumen con IA", border_style="cyan"))
@@ -182,6 +208,8 @@ class AccionClasificarIA(AccionConIA):
             self.consola.print("Cancelado. No se ha borrado nada.")
             return 0
 
+        # Aserción de desarrollo: la red de seguridad de arriba tiene que haber quitado los ⭐.
+        assert not any(c.importante for c in prescindibles), "se iba a borrar un correo importante"
         movidos = self.motor.cliente().mover_uids_a_papelera(
             carpeta, [correo.uid for correo in prescindibles], cuenta.carpeta_papelera
         )
@@ -380,6 +408,11 @@ class AccionRevisar(AccionBase):
         return set(movidos)
 
 
+def _miles(numero: int) -> str:
+    """12345 → «12.345», como se escribe en español."""
+    return f"{numero:,}".replace(",", ".")
+
+
 def _clave_fecha(correo) -> datetime:
     return correo.fecha or datetime.min.replace(tzinfo=timezone.utc)
 
@@ -394,15 +427,17 @@ class AccionExportar(AccionConIA):
         correos = self.motor.cliente().listar(carpeta, horas=horas)
         correos.sort(key=_clave_fecha, reverse=True)
 
-        resumen = self._resumir(carpeta, correos, horas) if correos else None
-
         destino = Path(self.definicion.destino).expanduser()
         archivo = destino / f"resumen-{datetime.now():%Y-%m-%d}.md"
-        contenido = _markdown(correos, resumen, horas)
 
         if simular:
+            if correos:
+                self._simular_envio(carpeta, correos, horas)
             self.consola.print(f"[yellow]Simulación: se escribiría «{escape(str(archivo))}».[/yellow]")
             return 0
+
+        resumen = self._resumir(carpeta, correos, horas) if correos else None
+        contenido = _markdown(correos, resumen, horas)
 
         try:
             destino.mkdir(parents=True, exist_ok=True)
@@ -437,6 +472,7 @@ def _markdown(correos: list, resumen: str | None, horas: int) -> str:
     return "\n".join(lineas)
 
 
+# Registro tipo → clase: el motor no necesita un if/elif por cada tipo.
 ACCIONES: dict[str, type[AccionBase]] = {
     "listar": AccionListar,
     "resumen-ia": AccionResumenIA,
@@ -445,3 +481,6 @@ ACCIONES: dict[str, type[AccionBase]] = {
     "revisar": AccionRevisar,
     "clasificar-ia": AccionClasificarIA,
 }
+
+# Aserción de desarrollo: un tipo que valida config.py pero no está aquí fallaría al ejecutarlo.
+assert set(ACCIONES) == TIPOS_VALIDOS, f"tipos sin clase o clases sin tipo: {set(ACCIONES) ^ TIPOS_VALIDOS}"
