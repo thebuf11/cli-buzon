@@ -8,9 +8,13 @@ VARIABLES_REALES = (
     "BUZON_CONFIG",
     "GMAIL_USUARIO",
     "GMAIL_APP_PASSWORD",
-    "IA_API_URL",
-    "IA_API_KEY",
-    "IA_MODELO",
+    "BUZON_DEMO",
+    "CENTRO_IA_URL",
+    "CENTRO_IA_KEY",
+    "CENTRO_IA_MODELO",
+    # OpenCode usa las mismas variables: si el alumno las exporta en su terminal,
+    # un test podría llamar a la IA del centro de verdad.
+    "CENTRO_IA_CA",
 )
 
 
@@ -19,7 +23,7 @@ def entorno_aislado(monkeypatch):
     """Cada test empieza sin las variables del alumno y deja el entorno como estaba.
 
     ``cargar_env`` usa ``os.environ.setdefault``, que monkeypatch no deshace:
-    sin esto, un test que cargase un .env dejaría credenciales o IA_API_URL
+    sin esto, un test que cargase un .env dejaría credenciales o CENTRO_IA_URL
     para los siguientes, y uno de ellos podría llamar a la IA de verdad.
     """
     for variable in VARIABLES_REALES:

@@ -19,7 +19,7 @@ from platformdirs import user_config_dir
 
 from .errores import AccionNoValida, ConfigError, CredencialesError
 
-PROVEEDORES = {"imap", "gmail-api"}
+PROVEEDORES = {"imap", "gmail-api", "demo"}
 PATRON_NOMBRE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 # Campos opcionales que admite cada tipo, además de nombre, descripcion y tipo.
@@ -51,7 +51,14 @@ CAMPOS_CUENTA = frozenset(
         "token_api",
     }
 )
-CAMPOS_IA = frozenset({"url_env", "clave_env", "modelo_env", "modelo_por_defecto"})
+CAMPOS_IA = frozenset({"url_env", "clave_env", "modelo_env", "ca_env", "modelo_por_defecto"})
+
+# Valores por defecto: los de la IA del centro (IES Simarro), los mismos que usa OpenCode.
+IA_URL_ENV = "CENTRO_IA_URL"
+IA_CLAVE_ENV = "CENTRO_IA_KEY"
+IA_MODELO_ENV = "CENTRO_IA_MODELO"
+IA_CA_ENV = "CENTRO_IA_CA"
+IA_MODELO_POR_DEFECTO = "qwen3.8-flash-next"
 
 
 def _comprobar_campos(datos: dict, validos: frozenset[str], contexto: str) -> None:
@@ -104,6 +111,8 @@ class Ia:
     clave_env: str
     modelo_env: str
     modelo_por_defecto: str
+    # Certificado de la CA del centro: Python no confía en él si no se le indica.
+    ca_env: str = IA_CA_ENV
 
 
 @dataclass(frozen=True)
@@ -193,10 +202,11 @@ def _leer_ia(datos: dict) -> Ia:
         raise ConfigError("ia: debe ser un objeto JSON {...}")
     _comprobar_campos(bruto, CAMPOS_IA, "ia")
     return Ia(
-        url_env=_texto(bruto, "url_env", "ia", "IA_API_URL"),
-        clave_env=_texto(bruto, "clave_env", "ia", "IA_API_KEY"),
-        modelo_env=_texto(bruto, "modelo_env", "ia", "IA_MODELO"),
-        modelo_por_defecto=_texto(bruto, "modelo_por_defecto", "ia", "llama3"),
+        url_env=_texto(bruto, "url_env", "ia", IA_URL_ENV),
+        clave_env=_texto(bruto, "clave_env", "ia", IA_CLAVE_ENV),
+        modelo_env=_texto(bruto, "modelo_env", "ia", IA_MODELO_ENV),
+        ca_env=_texto(bruto, "ca_env", "ia", IA_CA_ENV),
+        modelo_por_defecto=_texto(bruto, "modelo_por_defecto", "ia", IA_MODELO_POR_DEFECTO),
     )
 
 
@@ -331,13 +341,20 @@ def cargar_configuracion(ruta: str | Path) -> Configuracion:
         cuenta=cuenta,
         ia=ia,
         acciones=tuple(acciones),
-        avisos=tuple(_avisos(acciones)),
+        avisos=tuple(_avisos(acciones, ia)),
     )
 
 
-def _avisos(acciones: list[Accion]) -> list[str]:
-    """Cosas válidas pero arriesgadas: no impiden usar la configuración."""
+def _avisos(acciones: list[Accion], ia: Ia | None = None) -> list[str]:
+    """Cosas válidas pero arriesgadas o antiguas: no impiden usar la configuración."""
     avisos = []
+    if ia is not None and ia.url_env == "IA_API_URL":
+        # El acciones.json que creaba «buzon init» en la 1.0.0 fijaba los nombres viejos.
+        avisos.append(
+            "El bloque «ia» usa las variables de la 1.0.0 (IA_API_URL…). Para la IA del centro, "
+            "borra ese bloque (o pon \"url_env\": \"CENTRO_IA_URL\"…) y usa CENTRO_IA_URL, "
+            "CENTRO_IA_KEY y CENTRO_IA_CA en .env."
+        )
     for accion in acciones:
         if accion.tipo == "mover-papelera" and not accion.confirmar:
             avisos.append(

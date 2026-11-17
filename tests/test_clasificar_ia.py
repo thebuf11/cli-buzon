@@ -150,7 +150,7 @@ class IAFalsa:
 
     def comprobar(self):
         if not self.disponible:
-            raise SinRedError("No hay IA configurada: define IA_API_URL.")
+            raise SinRedError("No hay IA configurada: define CENTRO_IA_URL.")
 
     def clasificar(self, correos, textos=None):
         return {c.uid: Clasificacion(self.categorias.get(c.uid, "leer"), "motivo") for c in correos}
@@ -251,19 +251,19 @@ def config_minima(tmp_path):
 
 @pytest.fixture
 def sin_entorno_ia(monkeypatch):
-    for variable in ("IA_API_URL", "IA_API_KEY", "IA_MODELO"):
+    for variable in ("CENTRO_IA_URL", "CENTRO_IA_KEY", "CENTRO_IA_MODELO", "CENTRO_IA_CA"):
         monkeypatch.delenv(variable, raising=False)
 
 
-def test_comprobar_ia_sin_configurar_sale_con_1(tmp_path, sin_entorno_ia):
+def test_comprobar_ia_sin_configurar_sale_con_4(tmp_path, sin_entorno_ia):
     resultado = runner.invoke(app, ["--config", config_minima(tmp_path), "comprobar-ia"])
-    assert resultado.exit_code == 1
+    assert resultado.exit_code == 4  # 4 = sin IA: lo demás sigue funcionando
     assert "no definida" in resultado.output
 
 
 def test_comprobar_ia_responde_y_no_muestra_secretos(tmp_path, monkeypatch, sin_entorno_ia):
-    monkeypatch.setenv("IA_API_URL", "https://usuario:secreto@ia.ejemplo.com/v1/chat/completions?key=CLAVE123")
-    monkeypatch.setenv("IA_API_KEY", "sk-MUYSECRETA")
+    monkeypatch.setenv("CENTRO_IA_URL", "https://usuario:secreto@ia.ejemplo.com/v1/chat/completions?key=CLAVE123")
+    monkeypatch.setenv("CENTRO_IA_KEY", "sk-MUYSECRETA")
     monkeypatch.setattr(ia.urllib.request, "urlopen", lambda peticion, timeout: RespuestaFalsa("OK"))
 
     resultado = runner.invoke(app, ["--config", config_minima(tmp_path), "comprobar-ia"])
@@ -285,7 +285,7 @@ def test_ia_real_con_respuesta_ininteligible_no_borra_nada(tmp_path, monkeypatch
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("IA_API_URL", "http://localhost/v1/chat/completions")
+    monkeypatch.setenv("CENTRO_IA_URL", "http://localhost/v1/chat/completions")
     monkeypatch.setattr(ia.urllib.request, "urlopen", lambda p, timeout: RespuestaFalsa("No sé clasificar esto."))
     salida = io.StringIO()
     motor = Motor(cargar_configuracion(ruta), Console(file=salida, width=160), cliente=cliente)
@@ -328,13 +328,14 @@ def test_url_sin_secretos(url, esperado):
 
 @pytest.mark.parametrize("url", ["user:pass@host/v1", "http://host:abc/v1"])
 def test_comprobar_ia_con_url_rota_no_da_traceback_ni_muestra_la_contrasena(tmp_path, monkeypatch, sin_entorno_ia, url):
-    monkeypatch.setenv("IA_API_URL", url)
+    monkeypatch.setenv("CENTRO_IA_URL", url)
     resultado = runner.invoke(app, ["--config", config_minima(tmp_path), "comprobar-ia"])
     salida = resultado.output + (getattr(resultado, "stderr", "") or "")
-    assert resultado.exit_code == 1
+    assert resultado.exit_code == 4
     assert "pass" not in salida
     assert "Traceback" not in salida
-    assert not isinstance(resultado.exception, ValueError)
+    # Que salga por typer.Exit y no por una excepción sin capturar (CliRunner también da 1 ahí).
+    assert isinstance(resultado.exception, SystemExit)
 
 
 def test_resumen_con_url_sin_esquema_explica_el_error(monkeypatch):

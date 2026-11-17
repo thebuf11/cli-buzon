@@ -108,7 +108,7 @@ def test_resumir_envia_el_texto_y_limpia_la_respuesta(monkeypatch):
 
 
 def test_resumir_sin_url_explica_que_falta():
-    with pytest.raises(SinRedError, match="IA_API_URL"):
+    with pytest.raises(SinRedError, match="CENTRO_IA_URL"):
         ProveedorIA("", "", "llama3").resumir([correo("1", "Hola")], 24)
 
 
@@ -117,7 +117,7 @@ def test_resumir_sin_red(monkeypatch):
         raise urllib.error.URLError("conexión rechazada")
 
     monkeypatch.setattr(ia.urllib.request, "urlopen", urlopen)
-    with pytest.raises(SinRedError, match="No se pudo contactar"):
+    with pytest.raises(SinRedError, match="No llego al servidor"):
         proveedor().resumir([correo("1", "Hola")], 24)
 
 
@@ -153,7 +153,7 @@ class IAFalsa:
 
     def comprobar(self):
         if not self.disponible:
-            raise SinRedError("No hay IA configurada: define IA_API_URL.")
+            raise SinRedError("No hay IA configurada: define CENTRO_IA_URL.")
 
     def resumir(self, correos, horas, textos=None):
         self.recibido = (list(correos), dict(textos or {}))

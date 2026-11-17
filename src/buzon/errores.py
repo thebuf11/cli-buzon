@@ -21,5 +21,15 @@ class SinRedError(BuzonError):
     """No se puede conectar con IMAP o con el servicio de IA."""
 
 
+class IANoDisponible(SinRedError):
+    """El servicio de IA no responde o rechaza la petición (``comprobar-ia`` sale con 4).
+
+    Hereda de :class:`SinRedError` porque, para las acciones, es lo mismo:
+    avisan y siguen sin IA.
+    """
+
+    codigo_salida = 4
+
+
 class AccionNoValida(BuzonError):
     """La acción no existe o no se puede ejecutar con estos datos."""
