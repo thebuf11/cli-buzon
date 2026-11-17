@@ -8,6 +8,46 @@ Se generó a partir de `git log --reverse --format="%h %s"` y se corrigió a
 mano: se agruparon los commits por tema y se reescribieron para quien usa la
 herramienta, no para quien la programa.
 
+## [1.1.0] - 2026-11-17
+
+Para que el profesor pueda probarla en el centro, con la IA del centro y sin Gmail.
+
+### Añadido
+
+- **IA del centro (IES Simarro):** se usan las mismas variables que OpenCode
+  (`CENTRO_IA_URL`, `CENTRO_IA_KEY`, `CENTRO_IA_MODELO` y `CENTRO_IA_CA`) y el
+  modelo `qwen3.8-flash-next` por defecto. Vale la URL base (`…/v1`) o la
+  completa.
+- **Certificado del centro:** `CENTRO_IA_CA` se carga junto a los certificados
+  del sistema. `comprobar-ia` dice si el fichero existe, sin enseñar su contenido.
+- **Modo demo:** `buzon --demo …` o `BUZON_DEMO=1` usan una bandeja de ejemplo
+  en memoria. Funcionan todas las órdenes, sin cuenta y sin borrar nada real
+  (ADR 0004).
+- Mensajes concretos para cada fallo de la IA: 401/403 (clave), 404 (URL o
+  modelo), 429, certificado, sin red y tiempo agotado.
+- Sección «Probarlo en el centro» en el README.
+
+### Cambiado
+
+- `buzon comprobar-ia` sale con **4** si la IA no está disponible (antes, 1).
+- **Variables de la IA nuevas.** Si creaste la configuración con
+  `buzon init` en la 1.0.0, tu `acciones.json` fija los nombres viejos en el
+  bloque `"ia"`. Para pasarte a la IA del centro:
+  1. **Borra el bloque `"ia"`** de tu `acciones.json`. Sin él se usan
+     `CENTRO_IA_*` y `qwen3.8-flash-next`.
+  2. En `.env`, cambia `IA_API_URL` por `CENTRO_IA_URL` (vale la URL base,
+     `…/v1`) e `IA_API_KEY` por `CENTRO_IA_KEY`, y añade `CENTRO_IA_CA`.
+
+  `buzon validar` y `comprobar-ia` avisan si siguen los nombres viejos. Si
+  prefieres conservarlos, no toques nada: tu IA anterior sigue funcionando.
+
+### Corregido
+
+- Con una URL de IA con un puerto que no es un número (`http://host:abc/v1`),
+  `comprobar-ia` acababa con una excepción sin capturar. Ahora explica que la
+  URL no es válida. El test anterior no lo detectaba porque CliRunner también
+  devuelve 1 en ese caso.
+
 ## [1.0.0] - 2026-11-12
 
 Primera versión para la entrega del Proyecto 2.
@@ -88,5 +128,6 @@ Primera versión funcional (`23b0cb2`).
   IMAP 993.
 - Hook `pre-commit` que bloquea `.env`, `credentials.json` y `token.json`.
 
+[1.1.0]: https://github.com/thebuf11/cli-buzon/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/thebuf11/cli-buzon/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/thebuf11/cli-buzon/commit/23b0cb2
