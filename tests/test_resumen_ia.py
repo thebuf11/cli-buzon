@@ -11,7 +11,7 @@ from rich.console import Console
 from buzon import ia
 from buzon.config import cargar_configuracion
 from buzon.errores import AccionNoValida, SinRedError
-from buzon.ia import ProveedorIA, _prompt, recortar
+from buzon.ia import ProveedorCentro, ProveedorIA, _prompt, recortar
 from buzon.imap_client import Correo
 from buzon.motor import Motor
 
@@ -88,7 +88,7 @@ class RespuestaFalsa:
 
 
 def proveedor():
-    return ProveedorIA("http://localhost:11434/v1/chat/completions", "", "llama3")
+    return ProveedorCentro("http://localhost:11434/v1/chat/completions", "", "llama3")
 
 
 def test_resumir_envia_el_texto_y_limpia_la_respuesta(monkeypatch):
@@ -109,7 +109,7 @@ def test_resumir_envia_el_texto_y_limpia_la_respuesta(monkeypatch):
 
 def test_resumir_sin_url_explica_que_falta():
     with pytest.raises(SinRedError, match="CENTRO_IA_URL"):
-        ProveedorIA("", "", "llama3").resumir([correo("1", "Hola")], 24)
+        ProveedorCentro("", "", "llama3").resumir([correo("1", "Hola")], 24)
 
 
 def test_resumir_sin_red(monkeypatch):
@@ -146,7 +146,12 @@ class ClienteFalso:
         return f"Cuerpo del correo {uid}"
 
 
-class IAFalsa:
+class IAFalsa(ProveedorIA):
+    """Hija de la ABC: las acciones la usan igual que a ProveedorCentro."""
+
+    def completar(self, mensajes, temperatura=0.2, timeout=None):
+        raise AssertionError("IAFalsa responde con resumir/clasificar, no con completar")
+
     def __init__(self, disponible=True):
         self.disponible = disponible
         self.recibido = None

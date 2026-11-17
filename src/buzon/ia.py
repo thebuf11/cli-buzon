@@ -14,6 +14,7 @@ import ssl
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit, urlunsplit
+from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +27,7 @@ from .config import (
     Configuracion,
     Ia,
 )
-from .errores import IANoDisponible, SinRedError
+from .errores import IANoDisponible
 from .imap_client import Correo
 
 SISTEMA = (
@@ -220,12 +221,12 @@ def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasifica
     """
     inicio = PATRON_INICIO_JSON.search(respuesta)
     if not inicio:
-        raise SinRedError("La IA no devolvió la clasificación en JSON. Prueba otra vez o con otro modelo.")
+        raise IANoDisponible("La IA no devolvió la clasificación en JSON. Prueba otra vez o con otro modelo.")
     try:
         # raw_decode lee un JSON completo y se para: ignora el texto que venga detrás.
         datos, _ = json.JSONDecoder().raw_decode(respuesta, inicio.start())
     except json.JSONDecodeError as exc:
-        raise SinRedError("La IA devolvió un JSON roto. Prueba otra vez o con otro modelo.") from exc
+        raise IANoDisponible("La IA devolvió un JSON roto. Prueba otra vez o con otro modelo.") from exc
 
     # Envoltorio con una sola lista dentro: {"clasificacion": [...]}.
     if isinstance(datos, dict) and len(datos) == 1 and isinstance(next(iter(datos.values())), list):
@@ -237,7 +238,7 @@ def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasifica
             for clave, valor in datos.items()
         ]
     if not isinstance(datos, list):
-        raise SinRedError("La IA devolvió una clasificación con un formato inesperado.")
+        raise IANoDisponible("La IA devolvió una clasificación con un formato inesperado.")
 
     resultado: dict[int, Clasificacion] = {}
     for elemento in datos:
@@ -245,7 +246,7 @@ def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasifica
             continue
         numero = _numero(elemento.get("n"))
         if numero is None or not 1 <= numero <= total:
-            raise SinRedError(
+            raise IANoDisponible(
                 f"La IA numeró mal los correos ({elemento.get('n')!r} no está entre 1 y {total}); "
                 "por seguridad no se usa su clasificación."
             )
@@ -258,7 +259,7 @@ def interpretar_clasificacion(respuesta: str, total: int) -> dict[int, Clasifica
             resultado[numero] = Clasificacion(categoria, motivo)
 
     if total and not resultado:
-        raise SinRedError("No se entendió la clasificación de la IA. Prueba otra vez o con otro modelo.")
+        raise IANoDisponible("No se entendió la clasificación de la IA. Prueba otra vez o con otro modelo.")
     return resultado
 
 
@@ -273,11 +274,87 @@ def _numero(valor: object) -> int | None:
     return None
 
 
-class ProveedorIA:
-    """Llama a un servicio compatible con ``/v1/chat/completions``.
+class ProveedorIA(ABC):
+    """Lo que las acciones necesitan de un modelo de IA, sin saber a quién se lo piden.
 
-    Sirve tanto para la IA del centro (``https://…/v1`` + certificado propio)
-    como para un modelo local (``http://localhost:11434/v1``).
+    Las subclases solo implementan :meth:`completar` (y :meth:`comprobar` si pueden
+    saber de antemano que no hay IA). Así los tests usan un ``ProveedorFalso`` que
+    no sale a la red, y cambiar de servidor no obliga a tocar las acciones.
+    """
+
+    modelo: str = ""
+
+    @classmethod
+    def desde_entorno(cls, configuracion: Configuracion) -> ProveedorIA:
+        """Fábrica: el proveedor que indica ``.env``. Hoy es siempre el del centro."""
+        return ProveedorCentro.desde_entorno(configuracion)
+
+    def comprobar(self) -> None:
+        """Lanza :class:`IANoDisponible` si ya se sabe, sin preguntar, que no hay IA."""
+
+    def destino(self) -> str:
+        """A dónde irían los datos, para avisar en ``--simular`` (sin secretos)."""
+        return "el servicio de IA"
+
+    @abstractmethod
+    def completar(
+        self,
+        mensajes: list[dict[str, str]],
+        temperatura: float = 0.2,
+        timeout: float | None = None,
+    ) -> str:
+        """Envía los mensajes al modelo y devuelve el texto de su respuesta."""
+
+    def resumir(
+        self,
+        correos: Sequence[Correo],
+        horas: int,
+        textos: Mapping[str, str] | None = None,
+    ) -> str:
+        """Resume los correos; ``textos`` asocia el UID de cada uno con su cuerpo."""
+        return self.completar(
+            [
+                {"role": "system", "content": SISTEMA},
+                {"role": "user", "content": _prompt(correos, horas, textos)},
+            ]
+        )
+
+    def clasificar(
+        self, correos: Sequence[Correo], textos: Mapping[str, str] | None = None
+    ) -> dict[str, Clasificacion]:
+        """Clasifica los correos; devuelve ``{uid: Clasificacion}``.
+
+        Un correo que la IA no menciona queda como «leer»: nunca se borra.
+        """
+        respuesta = self.completar(
+            [
+                {"role": "system", "content": SISTEMA},
+                {"role": "user", "content": _prompt_clasificar(correos, textos or {})},
+            ],
+            temperatura=0.0,
+        )
+        por_numero = interpretar_clasificacion(respuesta, len(correos))
+        # Aserción de desarrollo: un número fuera de 1..N asignaría la etiqueta a otro correo.
+        assert all(1 <= n <= len(correos) for n in por_numero), "numeración fuera de rango"
+        sin_opinion = Clasificacion("leer", "la IA no lo clasificó")
+        return {
+            correo.uid: por_numero.get(numero, sin_opinion)
+            for numero, correo in enumerate(correos, start=1)
+        }
+
+    def probar(self, timeout: float = 60.0) -> str:
+        """Petición mínima para ``buzon comprobar-ia``; devuelve lo que contesta el modelo."""
+        return self.completar(
+            [{"role": "user", "content": "Responde únicamente con la palabra OK."}],
+            timeout=timeout,
+        )
+
+
+class ProveedorCentro(ProveedorIA):
+    """Servicio compatible con ``/v1/chat/completions``: la IA del centro u otro.
+
+    Sirve tanto para la IA del centro (``https://ia.simarro/llmapi/v1`` + su
+    certificado) como para un modelo local (``http://localhost:11434/v1``).
     """
 
     def __init__(
@@ -290,7 +367,7 @@ class ProveedorIA:
         nombres: Ia | None = None,
     ) -> None:
         self.url = url
-        self.clave = clave
+        self._clave = clave  # privada: nunca se imprime ni sale de esta clase
         self.modelo = modelo
         # Un modelo local con 24.000 caracteres de entrada puede tardar más de un minuto.
         self.timeout = timeout
@@ -316,18 +393,30 @@ class ProveedorIA:
         )
 
     @property
+    def clave_definida(self) -> bool:
+        """Si hay clave, sin enseñarla (para ``comprobar-ia``)."""
+        return bool(self._clave)
+
+    @property
     def disponible(self) -> bool:
         return bool(self.url)
 
     @property
     def endpoint(self) -> str:
+        return self.construir_endpoint(self.url)
+
+    def destino(self) -> str:
+        return urlsplit(self.url.strip()).hostname or "el servicio de IA"
+
+    @staticmethod
+    def construir_endpoint(url: str) -> str:
         """URL a la que se hace el POST.
 
         El centro da la URL base (``https://…/v1``), igual que para OpenCode;
         otros servicios dan la completa. Las dos valen: solo se añade lo que falta.
         """
         # Solo se toca la ruta: «…/v1?api-version=2» no debe acabar en «?api-version=2/chat/…».
-        partes = urlsplit(self.url.strip())
+        partes = urlsplit(url.strip())
         ruta = partes.path.rstrip("/")
         if not ruta.endswith("/chat/completions"):
             ruta = f"{ruta}/chat/completions"
@@ -357,15 +446,15 @@ class ProveedorIA:
         # Una clave pegada con comillas tipográficas o un salto de línea en medio no se puede
         # mandar en una cabecera HTTP: mejor decirlo aquí que fallar dentro de http.client.
         # (Nunca se incluye la clave en el mensaje.)
-        if self.clave:
+        if self._clave:
             clave_env = self.nombres.clave_env
             # PATRON_CONTROL deja pasar el salto de línea (vale en un resumen): aquí también se rechaza.
-            if PATRON_CONTROL.search(self.clave) or "\n" in self.clave:
+            if PATRON_CONTROL.search(self._clave) or "\n" in self._clave:
                 raise IANoDisponible(
                     f"{clave_env} tiene un salto de línea u otro carácter invisible: vuelve a copiarla."
                 )
             try:
-                self.clave.encode("latin-1")
+                self._clave.encode("latin-1")
             except UnicodeEncodeError as exc:
                 raise IANoDisponible(
                     f"{clave_env} tiene caracteres que no puede llevar una clave (¿comillas “ ” al copiarla?)."
@@ -429,49 +518,7 @@ class ProveedorIA:
             )
         return IANoDisponible("No llego al servidor de IA: ¿estás en la red del centro (o tienes conexión)?")
 
-    def resumir(
-        self,
-        correos: Sequence[Correo],
-        horas: int,
-        textos: Mapping[str, str] | None = None,
-    ) -> str:
-        """Resume los correos; ``textos`` asocia el UID de cada uno con su cuerpo."""
-        return self._chat(
-            [
-                {"role": "system", "content": SISTEMA},
-                {"role": "user", "content": _prompt(correos, horas, textos)},
-            ]
-        )
-
-    def clasificar(
-        self, correos: Sequence[Correo], textos: Mapping[str, str] | None = None
-    ) -> dict[str, Clasificacion]:
-        """Clasifica los correos; devuelve ``{uid: Clasificacion}``.
-
-        Un correo que la IA no menciona queda como «leer»: nunca se borra.
-        """
-        respuesta = self._chat(
-            [
-                {"role": "system", "content": SISTEMA},
-                {"role": "user", "content": _prompt_clasificar(correos, textos or {})},
-            ],
-            temperatura=0.0,
-        )
-        por_numero = interpretar_clasificacion(respuesta, len(correos))
-        sin_opinion = Clasificacion("leer", "la IA no lo clasificó")
-        return {
-            correo.uid: por_numero.get(numero, sin_opinion)
-            for numero, correo in enumerate(correos, start=1)
-        }
-
-    def probar(self, timeout: float = 60.0) -> str:
-        """Petición mínima para ``buzon comprobar-ia``; devuelve lo que contesta el modelo."""
-        return self._chat(
-            [{"role": "user", "content": "Responde únicamente con la palabra OK."}],
-            timeout=timeout,
-        )
-
-    def _chat(
+    def completar(
         self,
         mensajes: list[dict[str, str]],
         temperatura: float = 0.2,
@@ -482,8 +529,8 @@ class ProveedorIA:
 
         carga = {"model": self.modelo, "messages": mensajes, "temperature": temperatura}
         cabeceras = {"Content-Type": "application/json"}
-        if self.clave:
-            cabeceras["Authorization"] = f"Bearer {self.clave}"
+        if self._clave:
+            cabeceras["Authorization"] = f"Bearer {self._clave}"
 
         try:
             peticion = urllib.request.Request(

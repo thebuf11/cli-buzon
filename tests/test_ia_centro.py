@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 from buzon import ia
 from buzon.cli import app
 from buzon.errores import IANoDisponible, SinRedError
-from buzon.ia import ProveedorIA
+from buzon.ia import ProveedorCentro
 
 runner = CliRunner()
 
@@ -58,12 +58,12 @@ def capturar(monkeypatch, respuesta=None, error=None):
     ],
 )
 def test_endpoint_anade_chat_completions_solo_si_falta(url, esperada):
-    assert ProveedorIA(url, "", "m").endpoint == esperada
+    assert ProveedorCentro(url, "", "m").endpoint == esperada
 
 
 def test_la_peticion_va_al_endpoint_con_la_clave_en_la_cabecera(monkeypatch):
     llamadas = capturar(monkeypatch)
-    ProveedorIA("https://ia.centro.es/v1", "clave-personal", "qwen").probar()
+    ProveedorCentro("https://ia.centro.es/v1", "clave-personal", "qwen").probar()
     assert llamadas[0]["url"] == "https://ia.centro.es/v1/chat/completions"
     assert llamadas[0]["cabeceras"]["Authorization"] == "Bearer clave-personal"
     assert "context" not in llamadas[0]  # sin CA propia: los certificados del sistema
@@ -74,7 +74,7 @@ def test_la_peticion_va_al_endpoint_con_la_clave_en_la_cabecera(monkeypatch):
 
 def test_ca_que_no_existe_explica_que_falta_y_no_llama_a_la_red(monkeypatch, tmp_path):
     llamadas = capturar(monkeypatch)
-    proveedor = ProveedorIA("https://ia.centro.es/v1", "k", "m", ca=str(tmp_path / "no-esta.crt"))
+    proveedor = ProveedorCentro("https://ia.centro.es/v1", "k", "m", ca=str(tmp_path / "no-esta.crt"))
     with pytest.raises(IANoDisponible, match="CENTRO_IA_CA.*no existe"):
         proveedor.probar()
     assert llamadas == []
@@ -85,7 +85,7 @@ def test_ca_que_no_es_un_certificado_da_mensaje_claro(monkeypatch, tmp_path):
     falso = tmp_path / "ca.crt"
     falso.write_text("esto no es un certificado", encoding="utf-8")
     with pytest.raises(IANoDisponible, match="no es un certificado válido"):
-        ProveedorIA("https://ia.centro.es/v1", "k", "m", ca=str(falso)).probar()
+        ProveedorCentro("https://ia.centro.es/v1", "k", "m", ca=str(falso)).probar()
 
 
 def test_ca_valida_se_carga_y_se_pasa_a_urlopen(monkeypatch, tmp_path):
@@ -101,7 +101,7 @@ def test_ca_valida_se_carga_y_se_pasa_a_urlopen(monkeypatch, tmp_path):
     ca = tmp_path / "ca-ies-simarro.crt"
     ca.write_text("-----BEGIN CERTIFICATE-----", encoding="utf-8")
 
-    ProveedorIA("https://ia.centro.es/v1", "k", "m", ca=str(ca)).probar()
+    ProveedorCentro("https://ia.centro.es/v1", "k", "m", ca=str(ca)).probar()
 
     assert cargados == [str(ca)]
     assert llamadas[0]["context"] is contexto
@@ -110,7 +110,7 @@ def test_ca_valida_se_carga_y_se_pasa_a_urlopen(monkeypatch, tmp_path):
 def test_ca_con_virgulilla_se_expande(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    proveedor = ProveedorIA("https://x/v1", "k", "m", ca="~/ca.crt")
+    proveedor = ProveedorCentro("https://x/v1", "k", "m", ca="~/ca.crt")
     assert proveedor.ruta_ca == tmp_path / "ca.crt"
 
 
@@ -137,7 +137,7 @@ def error_http(codigo):
 def test_cada_fallo_tiene_su_mensaje(monkeypatch, error, mensaje):
     capturar(monkeypatch, error=error)
     with pytest.raises(IANoDisponible, match=mensaje):
-        ProveedorIA("https://ia.centro.es/v1", "k", "m").probar()
+        ProveedorCentro("https://ia.centro.es/v1", "k", "m").probar()
 
 
 def test_ia_no_disponible_sigue_siendo_sin_red_para_las_acciones():
@@ -201,7 +201,7 @@ def test_comprobar_ia_sin_red_sale_con_4_y_lo_explica(tmp_path, monkeypatch):
     ],
 )
 def test_endpoint_respeta_los_parametros_de_la_url(url, esperada):
-    assert ProveedorIA(url, "", "m").endpoint == esperada
+    assert ProveedorCentro(url, "", "m").endpoint == esperada
 
 
 @pytest.mark.parametrize(
@@ -215,7 +215,7 @@ def test_endpoint_respeta_los_parametros_de_la_url(url, esperada):
 def test_clave_mal_copiada_lo_dice_sin_mostrarla_ni_llamar_a_la_red(monkeypatch, clave, mensaje):
     llamadas = capturar(monkeypatch)
     with pytest.raises(IANoDisponible, match=mensaje) as error:
-        ProveedorIA("https://h/v1", clave, "m").probar()
+        ProveedorCentro("https://h/v1", clave, "m").probar()
     assert "sk-12" not in str(error.value)
     assert "CENTRO_IA_KEY" in str(error.value)
     assert llamadas == []
@@ -228,7 +228,7 @@ def test_respuesta_que_no_es_utf8_no_culpa_a_la_url(monkeypatch):
 
     capturar(monkeypatch, respuesta=Latin1())
     with pytest.raises(IANoDisponible, match="no es UTF-8"):
-        ProveedorIA("https://h/v1", "k", "m").probar()
+        ProveedorCentro("https://h/v1", "k", "m").probar()
 
 
 @pytest.mark.parametrize(
@@ -243,7 +243,7 @@ def test_respuesta_que_no_es_utf8_no_culpa_a_la_url(monkeypatch):
 def test_mas_fallos_con_su_mensaje(monkeypatch, error, mensaje):
     capturar(monkeypatch, error=error)
     with pytest.raises(IANoDisponible, match=mensaje):
-        ProveedorIA("https://h/v1", "k", "m").probar()
+        ProveedorCentro("https://h/v1", "k", "m").probar()
 
 
 def test_certificado_que_no_corresponde_cuando_ya_hay_ca(monkeypatch, tmp_path):
@@ -252,7 +252,7 @@ def test_certificado_que_no_corresponde_cuando_ya_hay_ca(monkeypatch, tmp_path):
     monkeypatch.setattr(ia.ssl, "create_default_context", lambda: type("C", (), {"load_verify_locations": lambda s, cafile: None})())
     capturar(monkeypatch, error=urllib.error.URLError(ssl.SSLCertVerificationError("certificate verify failed")))
     with pytest.raises(IANoDisponible, match="no corresponde a este servidor"):
-        ProveedorIA("https://h/v1", "k", "m", ca=str(ca)).probar()
+        ProveedorCentro("https://h/v1", "k", "m", ca=str(ca)).probar()
 
 
 def test_acciones_json_de_la_100_avisa_de_las_variables_viejas(tmp_path):

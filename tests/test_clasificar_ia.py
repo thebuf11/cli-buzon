@@ -12,7 +12,7 @@ from buzon import ia
 from buzon.cli import app
 from buzon.config import cargar_configuracion
 from buzon.errores import SinRedError
-from buzon.ia import Clasificacion, ProveedorIA, interpretar_clasificacion
+from buzon.ia import Clasificacion, ProveedorCentro, ProveedorIA, interpretar_clasificacion
 from buzon.imap_client import Correo
 from buzon.motor import Motor
 
@@ -116,7 +116,7 @@ def test_clasificar_correo_olvidado_queda_como_leer(monkeypatch):
         "urlopen",
         lambda peticion, timeout: RespuestaFalsa('[{"n": 1, "categoria": "prescindible", "motivo": "oferta"}]'),
     )
-    proveedor = ProveedorIA("http://localhost/v1/chat/completions", "", "llama3")
+    proveedor = ProveedorCentro("http://localhost/v1/chat/completions", "", "llama3")
     resultado = proveedor.clasificar([correo("a", "Oferta"), correo("b", "Hola")])
     assert resultado["a"].categoria == "prescindible"
     assert resultado["b"].categoria == "leer"
@@ -143,7 +143,12 @@ class ClienteFalso:
         return movidos
 
 
-class IAFalsa:
+class IAFalsa(ProveedorIA):
+    """Hija de la ABC: las acciones la usan igual que a ProveedorCentro."""
+
+    def completar(self, mensajes, temperatura=0.2, timeout=None):
+        raise AssertionError("IAFalsa responde con resumir/clasificar, no con completar")
+
     def __init__(self, categorias=None, disponible=True):
         self.categorias = categorias or {}
         self.disponible = disponible
@@ -339,6 +344,6 @@ def test_comprobar_ia_con_url_rota_no_da_traceback_ni_muestra_la_contrasena(tmp_
 
 
 def test_resumen_con_url_sin_esquema_explica_el_error(monkeypatch):
-    proveedor = ProveedorIA("localhost:11434/v1/chat/completions", "", "llama3")
+    proveedor = ProveedorCentro("localhost:11434/v1/chat/completions", "", "llama3")
     with pytest.raises(SinRedError, match="no es una URL válida"):
         proveedor.resumir([correo("1", "Hola")], 24)
