@@ -42,15 +42,49 @@ Spam: 37 mensajes
 | `buzon init` | Crea `acciones.json` y `.env` en tu carpeta de usuario |
 | `buzon ejecutar NOMBRE [--simular] [--si]` | Ejecuta una acción |
 | `buzon --config RUTA ...` | Usa otro fichero de acciones |
+| `buzon --demo ...` | Cualquier orden con **correos de ejemplo**: sin Gmail, sin contraseñas, sin borrar nada real |
 
 Códigos de salida: **0** bien · **1** fallo al ejecutar · **2** error de uso
-(Typer) · **3** configuración inválida.
+(Typer) · **3** configuración inválida · **4** la IA no está disponible
+(`comprobar-ia`; el resto de acciones avisan y siguen sin IA).
+
+## Probarlo en el centro (sin Gmail) · para el profesor
+
+No hace falta ninguna cuenta de correo: `--demo` usa una bandeja de ejemplo
+con correos importantes, publicidad y spam. Las fechas se calculan desde «ahora»,
+así que siempre caen en las últimas 24 h. Lo que se «borra» solo desaparece de
+la memoria.
+
+```bash
+# 1. Instalar (una sola orden; uv instala Python 3.12 si hace falta)
+uv tool install git+https://github.com/thebuf11/cli-buzon
+
+# 2. Crear la configuración en la carpeta de usuario
+buzon init
+
+# 3. IA del centro: rellena CENTRO_IA_URL, CENTRO_IA_KEY y CENTRO_IA_CA en el .env
+#    que indica «init» (o expórtalas en la terminal, como para OpenCode) y compruébalo
+buzon comprobar-ia
+
+# 4. Probar
+buzon --demo                                   # flujo completo: resumen IA + spam + confirmación
+buzon --demo ejecutar limpiar-prescindibles    # la IA propone qué borrar
+buzon --demo revisar                           # ver y borrar uno a uno (v 1, b 2, q)
+```
+
+¿Vas a probarla para la instalación cruzada? Sigue [`PRUEBA-COMPANERO.md`](PRUEBA-COMPANERO.md):
+es una lista de pasos con casillas y explica cómo abrir los issues.
+
+Sin red o sin IA, las órdenes siguen funcionando: enseñan las tablas y explican
+por qué no hay resumen. Para no repetir `--demo`, usa `BUZON_DEMO=1` (en
+PowerShell: `$env:BUZON_DEMO=1`).
 
 ## Requisitos
 
 - Python 3.12 (uv lo instala si hace falta)
 - [uv](https://docs.astral.sh/uv/)
-- Una cuenta de Gmail con **IMAP activado** y **contraseña de aplicación**
+- Una cuenta de Gmail con **IMAP activado** y **contraseña de aplicación**,
+  o la API de Gmail. Para probar sin cuenta, `--demo`.
 
 ## Instalación
 
@@ -146,17 +180,32 @@ El inicio de sesión abre un servidor temporal en `127.0.0.1` en un **puerto lib
 que elige el sistema**, solo durante unos segundos, así que tampoco interfiere
 con otras aplicaciones.
 
-### Capa de IA (opcional)
+### Capa de IA: la IA del centro (opcional)
 
 `buzon` funciona sin IA: avisa y sigue mostrando las tablas. Para activar el
-resumen, apunta `IA_API_URL` a un servicio compatible con OpenAI
-(`POST /v1/chat/completions`), por ejemplo el modelo local del centro:
+resumen usa la **IA del centro (IES Simarro)**, con las **mismas variables que
+OpenCode**. Si ya las tienes exportadas en tu terminal (`setx` o `~/.bashrc`),
+no hace falta escribirlas en `.env`:
 
 ```dotenv
-IA_API_URL=http://localhost:11434/v1/chat/completions
-IA_API_KEY=
-IA_MODELO=llama3
+CENTRO_IA_URL=https://<servidor-del-centro>/llmapi/v1   # la URL base, acabada en /v1
+CENTRO_IA_KEY=<tu clave personal>
+CENTRO_IA_CA=~/ca-ies-simarro.crt                       # «Certificado del centro» de la plataforma
+# CENTRO_IA_MODELO=qwen3.8-flash-next                   # opcional; es el de por defecto
 ```
+
+- ¿Las tienes en `.env` y quieres que OpenCode también las vea? En Windows,
+  `.\scripts\exportar-ia.ps1` las guarda como variables de usuario y define
+  `NODE_EXTRA_CA_CERTS` con el certificado. No muestra nunca los valores.
+- La petición va a `CENTRO_IA_URL` + `/chat/completions` (API compatible con
+  OpenAI). También vale la URL completa: solo se añade lo que falta.
+- **El certificado:** el servidor del centro usa una CA propia. Python no se fía
+  de ella si no se le indica, así que `CENTRO_IA_CA` se carga junto a los
+  certificados del sistema (`ssl.create_default_context()` +
+  `load_verify_locations`). Sin él, el error dice exactamente eso.
+- Sirve cualquier otro servicio compatible con OpenAI, por ejemplo Ollama en
+  local: `CENTRO_IA_URL=http://localhost:11434/v1` y `CENTRO_IA_MODELO=llama3`.
+  En ese caso no hace falta ni clave ni certificado.
 
 Si no hay red o falta la URL, la CLI **no revienta**: explica el problema y
 continúa con las acciones que no necesitan IA.
@@ -165,14 +214,29 @@ Para saber si la IA está bien configurada:
 
 ```text
 $ buzon comprobar-ia
-IA_API_URL   http://localhost:11434/v1/chat/completions
-IA_MODELO    llama3
-IA_API_KEY   no definida
-OK la IA responde en 2.3 s: «OK»
+CENTRO_IA_URL     https://ia.centro.es/…/v1
+CENTRO_IA_MODELO  qwen3.8-flash-next
+CENTRO_IA_KEY     definida (no se muestra)
+CENTRO_IA_CA      ca-ies-simarro.crt (existe)
+OK la IA responde en 1.2 s: «OK»
 ```
 
-Sale con **0** si responde y con **1** si no. La clave nunca se muestra, y de
-la URL se ocultan el usuario, la contraseña y los parámetros.
+Sale con **0** si responde y con **4** si no. La clave y el contenido del
+certificado nunca se muestran, y de la URL se ocultan el usuario, la contraseña,
+los parámetros y la ruta intermedia. Cada fallo tiene su propio mensaje:
+
+| Qué pasa | Qué dice `buzon` |
+|----------|------------------|
+| Falta `CENTRO_IA_URL` | No hay IA configurada: define CENTRO_IA_URL… |
+| Sin red o fuera del centro | No llego al servidor de IA: ¿estás en la red del centro? |
+| Falta el certificado o no es el bueno | No me fío del servidor de IA: falta el certificado del centro (CENTRO_IA_CA) |
+| `CENTRO_IA_CA` apunta a un fichero que no existe | No encuentro el certificado del centro… |
+| 401 o 403 | la clave no es válida. Revisa CENTRO_IA_KEY |
+| 429 | demasiadas peticiones, espera un minuto |
+| El modelo tarda demasiado | El servidor de IA no ha respondido a tiempo |
+
+Para comprobarlo tú mismo, apunta a un servidor que no existe:
+`CENTRO_IA_URL=https://10.255.255.1/v1 buzon comprobar-ia`. Debe salir con 4.
 
 Acciones con IA:
 
@@ -265,15 +329,16 @@ OK: 2 correo(s) movidos a la papelera.
     "carpeta_entrada": "INBOX",
     "carpeta_spam": "[Gmail]/Spam",
     "carpeta_papelera": "[Gmail]/Trash",
-    "proveedor": "imap",                  // o "gmail-api" (HTTPS 443)
+    "proveedor": "imap",                  // o "gmail-api" (HTTPS 443) o "demo" (correos de ejemplo)
     "credenciales_api": "credentials.json",
     "token_api": "token.json"
   },
   "ia": {
-    "url_env": "IA_API_URL",
-    "clave_env": "IA_API_KEY",
-    "modelo_env": "IA_MODELO",
-    "modelo_por_defecto": "llama3"
+    "url_env": "CENTRO_IA_URL",           // nombres de las variables, no sus valores
+    "clave_env": "CENTRO_IA_KEY",
+    "modelo_env": "CENTRO_IA_MODELO",
+    "ca_env": "CENTRO_IA_CA",
+    "modelo_por_defecto": "qwen3.8-flash-next"
   },
   "acciones": [
     {
@@ -383,7 +448,8 @@ src/buzon/
 ├── acciones.py     # clases Listar, ResumenIA, ClasificarIA, MoverPapelera, Exportar, Revisar
 ├── imap_client.py  # conexión IMAP + parser de correos (stdlib)
 ├── gmail_api.py    # alternativa: API REST de Gmail por HTTPS + OAuth (stdlib)
-├── ia.py           # cliente HTTP compatible con OpenAI: prompts, presupuesto, clasificación
+├── ia.py           # cliente HTTP compatible con OpenAI (IA del centro + su certificado): prompts, clasificación
+├── demo.py         # ClienteDemo: buzón de ejemplo en memoria para «--demo»
 ├── salida.py       # tablas Rich (texto de correo escapado) y confirmar() [s/N]
 ├── errores.py      # excepciones propias
 └── plantillas/     # acciones.json y .env que copia «buzon init»
@@ -395,7 +461,8 @@ Documentación del diseño:
 - `docs/adr/`: decisiones de diseño.
   - 0001: configuración externa.
   - 0002: API de Gmail.
-  - 0003: capa de IA.
+  - 0003: capa de IA (y la IA del centro).
+  - 0004: modo demo.
 - `docs/prompts.md`: cómo se ha usado la IA para programar y qué prompts envía la CLI.
 
 ## Limitaciones conocidas
@@ -403,7 +470,7 @@ Documentación del diseño:
 - El resumen con IA lee el texto de hasta 30 correos (importantes y recientes
   primero), recortado y sin el hilo citado; el resto entra solo con remitente y
   asunto. Como mucho entran 60 correos en el resumen y 35 en
-  `limpiar-prescindibles`. Ese texto se envía al servicio de `IA_API_URL`: usa
+  `limpiar-prescindibles`. Ese texto se envía al servicio de `CENTRO_IA_URL`: usa
   el modelo local del centro si no quieres que salga de la red.
 - Un modelo pequeño puede clasificar mal. Por eso la clasificación siempre se
   enseña antes de pedir confirmación, y con `--si` no hay nadie que la revise.
