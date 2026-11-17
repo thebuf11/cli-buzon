@@ -135,3 +135,19 @@ de certificado.
 centro basta con borrar ese bloque y renombrar las variables en `.env`.
 `validar` y `comprobar-ia` avisan cuando ven los nombres viejos. El cambio de
 nombres no ha necesitado tocar el código de las acciones.
+
+## Actualización 1.2.0 · Diseño y `--simular` (2026-11-17)
+
+- **`ProveedorIA` es una clase abstracta.** Su único método abstracto es
+  `completar(mensajes)`, y `resumir`, `clasificar` y `probar` viven en la base.
+  `ProveedorCentro` implementa `completar` con HTTP y el certificado; los
+  proveedores falsos de los tests también heredan de `ProveedorIA`. La clave pasa a ser privada (`_clave`): fuera de la
+  clase solo se pregunta `clave_definida`.
+- **Con `--simular`, `resumen-ia` y `exportar` no llaman al modelo.** Dicen
+  cuántos correos, caracteres y tokens (aproximados) se enviarían, a qué modelo y a
+  qué servidor. Así se puede comprobar qué sale de la red antes de enviarlo.
+- **Excepción:** `clasificar-ia --simular` **sí** pregunta a la IA, porque esa
+  simulación consiste en ver qué propondría borrar sin mover nada. Si la IA no
+  respondiera, la simulación no enseñaría nada útil. Lo que nunca hace con
+  `--simular` es mover correos.
+
