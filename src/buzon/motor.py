@@ -10,6 +10,7 @@ from rich.console import Console
 
 from .acciones import ACCIONES
 from .config import Accion, Configuracion, obtener_credenciales
+from .demo import ClienteDemo
 from .gmail_api import ClienteGmailAPI
 from .imap_client import ClienteIMAP
 
@@ -40,6 +41,13 @@ class Motor:
         """Devuelve el cliente IMAP, conectándose la primera vez que hace falta."""
         if self._cliente is None:
             cuenta = self.config.cuenta
+            if cuenta.proveedor == "demo":
+                # Correos de ejemplo en memoria: ni red, ni contraseñas, ni Gmail.
+                self.consola.print(
+                    "[yellow]Modo demo:[/yellow] correos de ejemplo; no se toca ningún correo real.\n"
+                )
+                self._cliente = ClienteDemo(cuenta).conectar()
+                return self._cliente
             if cuenta.proveedor == "gmail-api":
                 # HTTPS (443): no necesita GMAIL_APP_PASSWORD, usa OAuth.
                 self._cliente = ClienteGmailAPI(cuenta, base=self.config.ruta.parent).conectar()

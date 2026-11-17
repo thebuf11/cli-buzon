@@ -15,7 +15,7 @@ necesita una entrada en este fichero.
 {
   "version": 1,
   "cuenta": { "proveedor": "gmail-api" },
-  "ia": { "modelo_por_defecto": "llama3" },
+  "ia": { "modelo_por_defecto": "qwen3.8-flash-next" },
   "acciones": [
     { "nombre": "listar-spam", "descripcion": "Lista el spam", "tipo": "listar", "carpeta": "spam" }
   ]

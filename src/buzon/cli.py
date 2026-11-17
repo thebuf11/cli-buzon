@@ -1,14 +1,17 @@
 """Interfaz de línea de órdenes (Typer).
 
 La interfaz solo habla con el usuario: lee opciones, llama al motor y
-traduce los errores a mensajes y códigos de salida (0, 1, 2, 3).
+traduce los errores a mensajes y códigos de salida (0 bien, 1 fallo,
+2 uso, 3 configuración, 4 sin IA en ``comprobar-ia``).
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -27,7 +30,7 @@ from .config import (
     carpeta_usuario,
     inicializar,
 )
-from .errores import BuzonError, ConfigError, SinRedError
+from .errores import BuzonError, ConfigError, IANoDisponible, SinRedError
 from .ia import ProveedorIA
 from .motor import Motor
 from .salida import LIMITE_FILAS, confirmar, mostrar_correos
@@ -66,9 +69,26 @@ consola = Console()
 error = Console(stderr=True)
 
 
-def _cargar(ruta: Path) -> Configuracion:
+# click comparte ctx.meta entre todas las órdenes: la clave lleva el nombre del paquete.
+CLAVE_DEMO = "buzon.demo"
+
+
+def _demo_por_entorno() -> bool:
+    """``BUZON_DEMO=1`` equivale a ``--demo`` (útil para no repetirlo en cada orden)."""
+    return os.environ.get("BUZON_DEMO", "").strip().lower() in {"1", "si", "sí", "true", "yes"}
+
+
+def _leer(ctx: typer.Context) -> Configuracion:
+    """Lee acciones.json; con --demo cambia el buzón por los correos de ejemplo."""
+    config = cargar_configuracion(ctx.obj)
+    if ctx.meta.get(CLAVE_DEMO):
+        config = replace(config, cuenta=replace(config.cuenta, proveedor="demo"))
+    return config
+
+
+def _cargar(ctx: typer.Context) -> Configuracion:
     try:
-        return cargar_configuracion(ruta)
+        return _leer(ctx)
     except ConfigError as exc:
         error.print(f"[red]Configuración inválida:[/red] {escape(str(exc))}")
         raise typer.Exit(3) from exc
@@ -147,6 +167,8 @@ def _flujo_por_defecto(config: Configuracion) -> int:
 
 def _origen(config: Configuracion) -> str:
     cuenta = config.cuenta
+    if cuenta.proveedor == "demo":
+        return "modo demo (correos de ejemplo, sin Gmail)"
     if cuenta.proveedor == "gmail-api":
         return "API de Gmail (HTTPS 443)"
     return f"IMAP {escape(cuenta.servidor)}:{cuenta.puerto}"
@@ -165,13 +187,22 @@ def principal(
         ),
         show_default=False,
     ),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help=(
+            "Usa correos de ejemplo en vez de tu Gmail: no hace falta cuenta y no se borra nada "
+            "real. También con BUZON_DEMO=1."
+        ),
+    ),
 ) -> None:
     """Punto de entrada común: decide qué acciones.json usar y carga el .env de su carpeta."""
     ruta = buscar_configuracion(config)
     cargar_env(ruta.parent / ".env")
     ctx.obj = ruta
+    ctx.meta[CLAVE_DEMO] = demo or _demo_por_entorno()
     if ctx.invoked_subcommand is None:
-        raise typer.Exit(_flujo_por_defecto(_cargar(ruta)))
+        raise typer.Exit(_flujo_por_defecto(_cargar(ctx)))
 
 
 @app.command()
@@ -204,8 +235,10 @@ def init(
             consola.print(f"[yellow]Ya existe[/yellow] {escape(str(ruta))} (no se ha tocado)")
     consola.print(
         "\n[bold]Siguientes pasos[/bold]\n"
+        "0. ¿Solo quieres probarla? [bold]buzon --demo[/bold] usa correos de ejemplo, sin Gmail.\n"
         f"1. Rellena {escape(str(destino / '.env'))}: GMAIL_USUARIO y GMAIL_APP_PASSWORD "
-        "(contraseña de aplicación de Gmail) y, si quieres IA, IA_API_URL.\n"
+        "(contraseña de aplicación de Gmail) y, para la IA del centro, CENTRO_IA_URL, "
+        "CENTRO_IA_KEY y CENTRO_IA_CA.\n"
         "2. Comprueba la configuración: [bold]buzon validar[/bold] y [bold]buzon comprobar-ia[/bold].\n"
         "Si tu red bloquea IMAP (puerto 993), pon \"proveedor\": \"gmail-api\" en acciones.json "
         f"y guarda el credentials.json de Google Cloud en {escape(str(destino))} (ver README)."
@@ -215,7 +248,7 @@ def init(
 @app.command()
 def acciones(ctx: typer.Context) -> None:
     """Lista las acciones definidas en acciones.json."""
-    config = _cargar(ctx.obj)
+    config = _cargar(ctx)
     tabla = Table(title=f"Acciones · {config.ruta.name}", title_justify="left", header_style="bold cyan")
     tabla.add_column("Nombre", style="bold")
     tabla.add_column("Tipo")
@@ -229,7 +262,7 @@ def acciones(ctx: typer.Context) -> None:
 def validar(ctx: typer.Context) -> None:
     """Comprueba acciones.json y dice exactamente qué campo falla."""
     try:
-        config = cargar_configuracion(ctx.obj)
+        config = _leer(ctx)
     except ConfigError as exc:
         error.print(f"[red]Configuración inválida:[/red] {escape(str(exc))}")
         raise typer.Exit(3) from exc
@@ -274,29 +307,44 @@ def _url_sin_secretos(url: str) -> str:
 @app.command("comprobar-ia")
 def comprobar_ia(ctx: typer.Context) -> None:
     """Dice si la IA está configurada y responde (no muestra la clave)."""
-    config = _cargar(ctx.obj)
+    config = _cargar(ctx)
     nombres = config.ia
     proveedor = ProveedorIA.desde_entorno(config)
 
-    consola.print(
-        f"[bold]{nombres.url_env}[/bold]   {escape(_url_sin_secretos(proveedor.url)) or '[red]no definida[/red]'}"
-    )
-    consola.print(f"[bold]{nombres.modelo_env}[/bold]    {escape(proveedor.modelo)}")
-    clave = "[green]definida[/green] (no se muestra)" if proveedor.clave else "[dim]no definida[/dim]"
-    consola.print(f"[bold]{nombres.clave_env}[/bold]   {clave}")
+    ancho = max(len(n) for n in (nombres.url_env, nombres.modelo_env, nombres.clave_env, nombres.ca_env))
+
+    def fila(nombre: str, valor: str) -> None:
+        consola.print(f"[bold]{nombre.ljust(ancho)}[/bold]  {valor}")
+
+    fila(nombres.url_env, escape(_url_sin_secretos(proveedor.url)) or "[red]no definida[/red]")
+    fila(nombres.modelo_env, escape(proveedor.modelo))
+    fila(nombres.clave_env, "[green]definida[/green] (no se muestra)" if proveedor.clave else "[dim]no definida[/dim]")
+    ruta_ca = proveedor.ruta_ca
+    if ruta_ca is None:
+        fila(nombres.ca_env, "[dim]no definido (se usan los certificados del sistema)[/dim]")
+    elif ruta_ca.is_file():
+        fila(nombres.ca_env, f"[green]{escape(ruta_ca.name)}[/green] (existe)")
+    else:
+        fila(nombres.ca_env, f"[red]{escape(str(ruta_ca))} no existe[/red]")
+
+    for aviso in config.avisos:
+        if "«ia»" in aviso:  # p. ej., un acciones.json de la 1.0.0 con IA_API_URL
+            consola.print(f"[yellow]Aviso:[/yellow] {escape(aviso)}")
 
     inicio = time.perf_counter()
     try:
-        with _errores_controlados(), consola.status("Preguntando al modelo…"):
-            try:
-                respuesta = proveedor.probar()
-            except SinRedError as exc:
-                raise SinRedError(f"La IA no está disponible: {exc}") from exc
-    except typer.Exit:
+        with consola.status("Preguntando al modelo…"):
+            respuesta = proveedor.probar()
+    except KeyboardInterrupt:  # la espera puede durar hasta un minuto
+        error.print("\n[yellow]Interrumpido por el usuario.[/yellow]")
+        raise typer.Exit(1) from None
+    except SinRedError as exc:
+        # Código 4: «sin IA». Es distinto de 1 para que un script sepa que lo demás sí funciona.
+        error.print(f"[red]Error:[/red] La IA no está disponible: {escape(str(exc))}")
         error.print(
             "[dim]Las acciones sin IA (listar, revisar, limpiar-spam…) siguen funcionando.[/dim]"
         )
-        raise
+        raise typer.Exit(IANoDisponible.codigo_salida) from exc
 
     segundos = time.perf_counter() - inicio
     consola.print(
@@ -311,7 +359,7 @@ def listar(
     horas: int = typer.Option(24, "--horas", min=0, help="Horas hacia atrás; 0 = todo"),
 ) -> None:
     """Muestra los correos de una carpeta (solo lectura)."""
-    config = _cargar(ctx.obj)
+    config = _cargar(ctx)
     destino = config.cuenta.resolver_carpeta(carpeta)
     ventana = horas if horas > 0 else None
 
@@ -330,7 +378,7 @@ def revisar(
     simular: bool = typer.Option(False, "--simular", help="Enseña qué borraría sin tocar nada"),
 ) -> None:
     """Lista los correos recientes y te deja verlos y borrar los que no te interesen."""
-    config = _cargar(ctx.obj)
+    config = _cargar(ctx)
     definicion = Accion(
         nombre="revisar",
         descripcion="Revisión interactiva",
@@ -353,7 +401,7 @@ def ejecutar(
     si: bool = typer.Option(False, "--si", help="No pide confirmación (para scripts)"),
 ) -> None:
     """Ejecuta una acción definida en acciones.json."""
-    config = _cargar(ctx.obj)
+    config = _cargar(ctx)
     with Motor(config, consola) as motor, _errores_controlados():
         codigo = motor.ejecutar(nombre, simular=simular, si=si)
 

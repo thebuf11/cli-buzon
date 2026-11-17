@@ -30,8 +30,8 @@ Tres condiciones marcan el diseño:
 **Protocolo.** Un único cliente, `ProveedorIA` (`src/buzon/ia.py`), habla con
 cualquier servicio compatible con `POST /v1/chat/completions`, el formato de
 OpenAI que también ofrecen Ollama, LM Studio, vLLM o Groq. URL, clave y modelo
-salen de variables de entorno (`IA_API_URL`, `IA_API_KEY`, `IA_MODELO`) cargadas
-desde `.env`. `acciones.json` solo guarda los *nombres* de esas variables.
+salen de variables de entorno (`CENTRO_IA_URL`, `CENTRO_IA_KEY`, `CENTRO_IA_MODELO`,
+`CENTRO_IA_CA`) cargadas desde `.env`. `acciones.json` solo guarda los *nombres* de esas variables.
 
 **Sin dependencias.** Se usa `urllib.request` de la librería estándar en lugar
 de `httpx` o del SDK de OpenAI. Basta una petición POST con JSON y un timeout,
@@ -82,7 +82,7 @@ quita el hilo citado y las URL largas.
 
 **En contra**
 
-- El texto de los correos se envía al servicio de `IA_API_URL`; con un servicio
+- El texto de los correos se envía al servicio de `CENTRO_IA_URL`; con un servicio
   en la nube sale del equipo. Está documentado en el README.
 - Un modelo pequeño puede clasificar mal. La confirmación y la protección de ⭐
   lo limitan, pero con `--si` el usuario no revisa la tabla.
@@ -104,3 +104,34 @@ quita el hilo citado y las URL largas.
 4. **Salida estructurada (`response_format` / JSON schema):** no está en todos
    los servidores compatibles con OpenAI ni en todas las versiones de Ollama, así
    que no se puede dar por supuesta.
+
+## Actualización 1.1.0 · IA del centro (2026-11-17)
+
+**Contexto.** El profesor tiene que poder probar la CLI con la IA del centro
+(IES Simarro). Hasta la 1.0.0 la CLI usaba sus propias variables (`IA_API_URL`
+con la URL completa, `IA_MODELO=llama3`) y no cargaba ningún certificado: contra
+el servidor del centro, que usa una CA propia, la petición fallaba con un error
+de certificado.
+
+**Decisión.**
+
+- Las variables se llaman igual que en OpenCode: `CENTRO_IA_URL` (URL base,
+  acabada en `/v1`), `CENTRO_IA_KEY`, `CENTRO_IA_MODELO` (opcional,
+  `qwen3.8-flash-next` por defecto) y `CENTRO_IA_CA`. Quien ya las tiene
+  exportadas para OpenCode no configura nada más.
+- `ProveedorIA.endpoint` añade `/chat/completions` solo si falta: valen la URL
+  base del centro y la completa de otros servicios.
+- El certificado se carga con `ssl.create_default_context()` +
+  `load_verify_locations(CENTRO_IA_CA)` y se pasa a `urlopen(context=…)`. Se
+  suma a los del sistema; no se desactiva la verificación (`CERT_NONE`) en
+  ningún caso.
+- Los fallos pasan a ser `IANoDisponible` (hija de `SinRedError`, así que las
+  acciones no cambian), cada uno con su mensaje (401, 429, certificado, sin red,
+  timeout). `buzon comprobar-ia` sale con **4**.
+
+**Consecuencias.** Como los nombres de las variables viven en `acciones.json`
+(ADR 0001), quien tenga un `acciones.json` de la 1.0.0 sigue usando
+`IA_API_URL` sin cambiar nada: su bloque `ia` los fija. Para pasarse a la IA del
+centro basta con borrar ese bloque y renombrar las variables en `.env`.
+`validar` y `comprobar-ia` avisan cuando ven los nombres viejos. El cambio de
+nombres no ha necesitado tocar el código de las acciones.

@@ -11,6 +11,6 @@
 9. **Acción 6:** `limpiar-prescindibles`: la IA clasifica los correos y propone mover a la papelera la publicidad y los boletines; lo marcado con ⭐ nunca se borra.
 10. **No hace:** no envía correo, no borra definitivamente (todo va a la papelera de Gmail), no toca carpetas que no se le indiquen y la IA nunca borra sin confirmación.
 11. **Seguridad:** credenciales en `.env` (IMAP) o en `credentials.json` + `token.json` (API de Gmail, OAuth), todo fuera de git y protegido por un hook `pre-commit`; `--simular` antes de cualquier cambio.
-12. **Conexión:** IMAP (993) o API de Gmail por HTTPS (443) para redes que bloquean el 993; se elige con `cuenta.proveedor`. IA: cualquier servicio compatible con OpenAI (ADR 0003).
-13. **Sin red o sin IA:** la CLI explica el problema en una línea y sigue con las acciones que no la necesitan.
+12. **Conexión:** IMAP (993) o API de Gmail por HTTPS (443) para redes que bloquean el 993; se elige con `cuenta.proveedor`. Para probarla sin cuenta, `--demo` usa correos de ejemplo en memoria (ADR 0004). IA: la del centro (`CENTRO_IA_*`, con su certificado) o cualquier servicio compatible con OpenAI (ADR 0003).
+13. **Sin red o sin IA:** la CLI explica el problema en una línea y sigue con las acciones que no la necesitan; `comprobar-ia` sale con 4.
 14. **Hecho cuando:** se instala con una orden (`uv tool install git+…`), `buzon init` deja una configuración válida y los tests pasan en Windows, Linux y macOS.

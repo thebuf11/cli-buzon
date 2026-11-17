@@ -6,16 +6,27 @@ código. Si no hay configuración o no hay red, la CLI sigue funcionando.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
+import ssl
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
-from .config import Configuracion
-from .errores import SinRedError
+from .config import (
+    IA_CLAVE_ENV,
+    IA_MODELO_ENV,
+    IA_MODELO_POR_DEFECTO,
+    IA_URL_ENV,
+    Configuracion,
+    Ia,
+)
+from .errores import IANoDisponible, SinRedError
 from .imap_client import Correo
 
 SISTEMA = (
@@ -263,14 +274,35 @@ def _numero(valor: object) -> int | None:
 
 
 class ProveedorIA:
-    """Llama a un servicio compatible con ``/v1/chat/completions``."""
+    """Llama a un servicio compatible con ``/v1/chat/completions``.
 
-    def __init__(self, url: str, clave: str, modelo: str, timeout: float = 180.0) -> None:
+    Sirve tanto para la IA del centro (``https://…/v1`` + certificado propio)
+    como para un modelo local (``http://localhost:11434/v1``).
+    """
+
+    def __init__(
+        self,
+        url: str,
+        clave: str,
+        modelo: str,
+        timeout: float = 180.0,
+        ca: str = "",
+        nombres: Ia | None = None,
+    ) -> None:
         self.url = url
         self.clave = clave
         self.modelo = modelo
         # Un modelo local con 24.000 caracteres de entrada puede tardar más de un minuto.
         self.timeout = timeout
+        # Ruta al certificado de la CA del centro («~/ca-ies-simarro.crt»); vacía = solo los del sistema.
+        self.ca = ca
+        # Nombres de las variables de entorno, para que los mensajes digan cuál revisar.
+        self.nombres = nombres or Ia(
+            url_env=IA_URL_ENV,
+            clave_env=IA_CLAVE_ENV,
+            modelo_env=IA_MODELO_ENV,
+            modelo_por_defecto=IA_MODELO_POR_DEFECTO,
+        )
 
     @classmethod
     def desde_entorno(cls, configuracion: Configuracion) -> ProveedorIA:
@@ -279,21 +311,123 @@ class ProveedorIA:
             url=os.environ.get(ia.url_env, "").strip(),
             clave=os.environ.get(ia.clave_env, "").strip(),
             modelo=os.environ.get(ia.modelo_env, "").strip() or ia.modelo_por_defecto,
+            ca=os.environ.get(ia.ca_env, "").strip(),
+            nombres=ia,
         )
 
     @property
     def disponible(self) -> bool:
         return bool(self.url)
 
+    @property
+    def endpoint(self) -> str:
+        """URL a la que se hace el POST.
+
+        El centro da la URL base (``https://…/v1``), igual que para OpenCode;
+        otros servicios dan la completa. Las dos valen: solo se añade lo que falta.
+        """
+        # Solo se toca la ruta: «…/v1?api-version=2» no debe acabar en «?api-version=2/chat/…».
+        partes = urlsplit(self.url.strip())
+        ruta = partes.path.rstrip("/")
+        if not ruta.endswith("/chat/completions"):
+            ruta = f"{ruta}/chat/completions"
+        return urlunsplit(partes._replace(path=ruta))
+
+    @property
+    def ruta_ca(self) -> Path | None:
+        return Path(self.ca).expanduser() if self.ca else None
+
     def comprobar(self) -> None:
-        """Lanza :class:`SinRedError` con el motivo si la IA no está configurada."""
+        """Lanza :class:`IANoDisponible` con el motivo si la IA no está configurada."""
+        url_env = self.nombres.url_env
         if not self.disponible:
-            raise SinRedError(
-                "No hay IA configurada: define IA_API_URL (y IA_API_KEY si tu servicio la pide) en .env."
+            raise IANoDisponible(
+                f"No hay IA configurada: define {url_env} (y {self.nombres.clave_env} si tu "
+                "servicio la pide) en .env."
             )
         # «localhost:11434/v1» o «user:pass@host» sin http:// parecen URLs pero no lo son.
         if not self.url.lower().startswith(("http://", "https://")):
-            raise SinRedError("IA_API_URL no es una URL válida: debe empezar por http:// o https://.")
+            raise IANoDisponible(f"{url_env} no es una URL válida: debe empezar por http:// o https://.")
+        ruta = self.ruta_ca
+        if ruta is not None and not ruta.is_file():
+            raise IANoDisponible(
+                f"No encuentro el certificado del centro: {self.nombres.ca_env} apunta a «{ruta}», "
+                "que no existe. Descárgalo de la plataforma («Certificado del centro»)."
+            )
+        # Una clave pegada con comillas tipográficas o un salto de línea en medio no se puede
+        # mandar en una cabecera HTTP: mejor decirlo aquí que fallar dentro de http.client.
+        # (Nunca se incluye la clave en el mensaje.)
+        if self.clave:
+            clave_env = self.nombres.clave_env
+            # PATRON_CONTROL deja pasar el salto de línea (vale en un resumen): aquí también se rechaza.
+            if PATRON_CONTROL.search(self.clave) or "\n" in self.clave:
+                raise IANoDisponible(
+                    f"{clave_env} tiene un salto de línea u otro carácter invisible: vuelve a copiarla."
+                )
+            try:
+                self.clave.encode("latin-1")
+            except UnicodeEncodeError as exc:
+                raise IANoDisponible(
+                    f"{clave_env} tiene caracteres que no puede llevar una clave (¿comillas “ ” al copiarla?)."
+                ) from exc
+
+    def _contexto_tls(self) -> ssl.SSLContext | None:
+        """Certificados del sistema más, si se indica, el de la CA del centro."""
+        ruta = self.ruta_ca
+        if ruta is None:
+            return None
+        contexto = ssl.create_default_context()
+        try:
+            contexto.load_verify_locations(cafile=str(ruta))
+        except (ssl.SSLError, OSError) as exc:
+            raise IANoDisponible(
+                f"{self.nombres.ca_env} apunta a «{ruta}», pero no es un certificado válido (.crt o .pem)."
+            ) from exc
+        return contexto
+
+    def _error_http(self, codigo: int) -> IANoDisponible:
+        """Un mensaje por cada respuesta de error que se puede arreglar."""
+        nombres = self.nombres
+        if codigo in (401, 403):
+            return IANoDisponible(
+                f"El servidor de IA responde {codigo}: la clave no es válida. Revisa {nombres.clave_env}."
+            )
+        if codigo == 404:
+            return IANoDisponible(
+                f"El servidor de IA responde 404: revisa {nombres.url_env} (suele acabar en /v1) "
+                f"y el modelo ({nombres.modelo_env} = {self.modelo})."
+            )
+        if codigo == 429:
+            return IANoDisponible("El servidor de IA responde 429: demasiadas peticiones, espera un minuto.")
+        if codigo >= 500:
+            return IANoDisponible(f"El servidor de IA tiene un problema (error {codigo}). Prueba más tarde.")
+        return IANoDisponible(
+            f"El servicio de IA respondió con error HTTP {codigo}. "
+            f"Revisa {nombres.url_env}, {nombres.clave_env} y {nombres.modelo_env}."
+        )
+
+    def _error_conexion(self, exc: BaseException) -> IANoDisponible:
+        """Traduce un fallo de red a algo que el usuario pueda arreglar."""
+        motivo = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+        if isinstance(motivo, ssl.SSLCertVerificationError) or "CERTIFICATE" in str(motivo).upper():
+            ca_env = self.nombres.ca_env
+            if getattr(motivo, "verify_code", None) == 62:  # el nombre del servidor no coincide
+                return IANoDisponible(
+                    f"El certificado del servidor de IA no es de ese nombre: revisa {self.nombres.url_env}."
+                )
+            if self.ruta_ca is not None:
+                return IANoDisponible(
+                    f"No me fío del servidor de IA: el certificado de {ca_env} no corresponde a este "
+                    "servidor (o ha caducado). Descarga de nuevo el del centro."
+                )
+            return IANoDisponible(f"No me fío del servidor de IA: falta el certificado del centro ({ca_env}).")
+        # TimeoutError suelto = conectó, pero el modelo no terminó a tiempo. Si no llega a
+        # conectar, urllib lo envuelve en URLError y cae en el mensaje de red.
+        if isinstance(exc, TimeoutError):
+            return IANoDisponible(
+                "El servidor de IA no ha respondido a tiempo. Prueba con menos correos o más tarde."
+            )
+        return IANoDisponible("No llego al servidor de IA: ¿estás en la red del centro (o tienes conexión)?")
 
     def resumir(
         self,
@@ -353,35 +487,47 @@ class ProveedorIA:
 
         try:
             peticion = urllib.request.Request(
-                self.url,
+                self.endpoint,
                 data=json.dumps(carga).encode("utf-8"),
                 headers=cabeceras,
                 method="POST",
             )
         except ValueError as exc:  # «host/v1» sin http://, esquema desconocido…
-            raise SinRedError(
-                "IA_API_URL no es una URL válida: debe empezar por http:// o https://."
+            raise IANoDisponible(
+                f"{self.nombres.url_env} no es una URL válida: debe empezar por http:// o https://."
             ) from exc
 
+        # Sin certificado propio no se pasa «context»: urllib usa los del sistema.
+        extra = {}
+        contexto = self._contexto_tls()
+        if contexto is not None:
+            extra["context"] = contexto
+
         try:
-            with urllib.request.urlopen(peticion, timeout=timeout or self.timeout) as respuesta:
+            with urllib.request.urlopen(peticion, timeout=timeout or self.timeout, **extra) as respuesta:
                 datos = json.loads(respuesta.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            raise SinRedError(
-                f"El servicio de IA respondió con error HTTP {exc.code}. Revisa IA_API_URL, IA_API_KEY y IA_MODELO."
-            ) from exc
+            raise self._error_http(exc.code) from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise SinRedError("No se pudo contactar con el servicio de IA. Revisa tu conexión.") from exc
+            raise self._error_conexion(exc) from exc
+        except UnicodeDecodeError as exc:  # antes que UnicodeError: no es culpa de la URL
+            raise IANoDisponible("El servicio de IA devolvió texto que no es UTF-8.") from exc
+        except (http.client.InvalidURL, UnicodeError) as exc:  # «host:abc», servidor con tildes…
+            raise IANoDisponible(
+                f"{self.nombres.url_env} no es una URL válida: revisa el servidor y el puerto."
+            ) from exc
+        except http.client.HTTPException as exc:  # el servidor cortó la respuesta a medias
+            raise IANoDisponible("El servidor de IA cortó la respuesta. Prueba otra vez.") from exc
         except json.JSONDecodeError as exc:
-            raise SinRedError("El servicio de IA devolvió algo que no es JSON.") from exc
+            raise IANoDisponible("El servicio de IA devolvió algo que no es JSON.") from exc
 
         try:
             contenido = datos["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise SinRedError("El servicio de IA devolvió una respuesta inesperada.") from exc
+            raise IANoDisponible("El servicio de IA devolvió una respuesta inesperada.") from exc
 
         # Sin caracteres de control: la respuesta no debe poder mover el cursor de la terminal.
         texto = PATRON_CONTROL.sub("", str(contenido)).strip()
         if not texto:
-            raise SinRedError("El servicio de IA devolvió un resumen vacío.")
+            raise IANoDisponible("El servicio de IA devolvió un resumen vacío.")
         return texto

@@ -1,0 +1,105 @@
+{
+  "entrada": [
+    {
+      "remitente": "Jefatura de Estudios <jefatura@iesejemplo.es>",
+      "asunto": "Cambio de aula para el examen de Programación",
+      "hace_horas": 0.5,
+      "importante": true,
+      "texto": "Hola:\n\nEl examen de Programación del jueves 20 se hace en el aula B12 en lugar de la A03, a la misma hora (8:30). Traed el DNI.\n\nUn saludo,\nJefatura de Estudios"
+    },
+    {
+      "remitente": "Tienda Online <ofertas@tiendaonline.example>",
+      "asunto": "¡Solo hoy! 70 % de descuento en auriculares",
+      "hace_horas": 1.2,
+      "texto": "Aprovecha el Black Friday adelantado: auriculares, teclados y ratones con hasta un 70 % de descuento. Oferta válida solo hoy hasta las 23:59. Date de baja aquí."
+    },
+    {
+      "remitente": "Ana Torres <ana.torres@iesejemplo.es>",
+      "asunto": "Reunión de tutores el martes",
+      "hace_horas": 2.5,
+      "importante": true,
+      "texto": "Buenas,\n\nOs convoco a la reunión de tutores del martes a las 17:00 en la sala de profesores. Orden del día: evaluación inicial y salidas de la segunda evaluación. Si no podéis venir, avisadme antes del lunes.\n\nAna"
+    },
+    {
+      "remitente": "GitHub <noreply@github.com>",
+      "asunto": "[cli-buzon] Run passed: tests - main",
+      "hace_horas": 3.0,
+      "texto": "All jobs have passed. tests / ubuntu-latest, windows-latest, macos-latest: success."
+    },
+    {
+      "remitente": "Boletín Tecnológico <boletin@noticias.example>",
+      "asunto": "Las 10 noticias de la semana",
+      "hace_horas": 4.7,
+      "texto": "Esta semana: nuevo modelo de lenguaje, la UE regula la IA, trucos de productividad y mucho más. Lee el boletín completo en nuestra web."
+    },
+    {
+      "remitente": "Marta Gil <marta.gil@alumnos.example>",
+      "asunto": "Apuntes del tema 5 y duda sobre la práctica",
+      "hace_horas": 6.0,
+      "texto": "Hola, te paso los apuntes del tema 5 que me pediste. Una duda: en la práctica de la CLI, ¿el fichero acciones.json tiene que estar en la carpeta del proyecto o vale con la carpeta de usuario? La entrega es el viernes.\n\nGracias,\nMarta"
+    },
+    {
+      "remitente": "Banco Ejemplo <avisos@bancoejemplo.example>",
+      "asunto": "Tu recibo de noviembre ya está disponible",
+      "hace_horas": 8.5,
+      "texto": "Ya puedes consultar el recibo de noviembre en la aplicación. Importe: 12,50 €. Fecha de cargo: 25 de noviembre. Este correo es informativo, no hace falta responder."
+    },
+    {
+      "remitente": "Red Social <notificaciones@redsocial.example>",
+      "asunto": "Tienes 5 notificaciones nuevas",
+      "hace_horas": 11.0,
+      "texto": "A 3 personas les ha gustado tu publicación y tienes 2 solicitudes de amistad pendientes."
+    },
+    {
+      "remitente": "Secretaría <secretaria@iesejemplo.es>",
+      "asunto": "Plazo de matrícula de la FCT hasta el 28 de noviembre",
+      "hace_horas": 15.0,
+      "importante": true,
+      "texto": "Recordamos que el plazo para entregar la documentación de la Formación en Centros de Trabajo termina el 28 de noviembre a las 14:00. Sin ella no se puede asignar empresa."
+    },
+    {
+      "remitente": "Supermercado Ejemplo <club@super.example>",
+      "asunto": "Tus cupones de esta semana",
+      "hace_horas": 20.0,
+      "texto": "Esta semana tienes cupones de 2 € en fruta y un 2x1 en yogures. Válidos hasta el domingo."
+    },
+    {
+      "remitente": "Pablo Ruiz <pablo.ruiz@alumnos.example>",
+      "asunto": "Partido del sábado",
+      "hace_horas": 30.0,
+      "texto": "¿Te apuntas al partido del sábado a las 11? Faltan dos para completar el equipo."
+    },
+    {
+      "remitente": "Biblioteca <biblioteca@iesejemplo.es>",
+      "asunto": "Devolución del libro «Clean Code»",
+      "hace_horas": 40.0,
+      "texto": "El préstamo del libro «Clean Code» vence el viernes. Puedes renovarlo una vez desde la web de la biblioteca."
+    }
+  ],
+  "spam": [
+    {
+      "remitente": "Premios Internacionales <ganador@premios.example>",
+      "asunto": "¡HAS GANADO un iPhone! Reclámalo ahora",
+      "hace_horas": 2.0,
+      "texto": "Enhorabuena, has sido seleccionado. Haz clic y deja tus datos bancarios para recibir el premio."
+    },
+    {
+      "remitente": "Soporte Cuenta <seguridad@cuenta-verificar.example>",
+      "asunto": "Tu cuenta será bloqueada en 24 horas",
+      "hace_horas": 9.0,
+      "texto": "Detectamos actividad sospechosa. Verifica tu contraseña en el enlace o perderás el acceso."
+    },
+    {
+      "remitente": "Inversiones Rápidas <info@cripto-facil.example>",
+      "asunto": "Gana 3.000 € a la semana desde casa",
+      "hace_horas": 26.0,
+      "texto": "Método secreto de inversión en criptomonedas. Plazas limitadas."
+    },
+    {
+      "remitente": "Farmacia Online <ventas@pastillas.example>",
+      "asunto": "Ofertas exclusivas sin receta",
+      "hace_horas": 50.0,
+      "texto": "Envío discreto en 24 horas."
+    }
+  ]
+}
