@@ -8,6 +8,38 @@ Se generó a partir de `git log --reverse --format="%h %s"` y se corrigió a
 mano: se agruparon los commits por tema y se reescribieron para quien usa la
 herramienta, no para quien la programa.
 
+## [1.2.0] - 2026-11-17
+
+### Añadido
+
+- **`--simular` en `resumen-24h` y `guardar-resumen` ya no llama a la IA:**
+  dice cuántos correos, caracteres y tokens se enviarían, a qué modelo y a qué
+  servidor (ADR 0003). `limpiar-prescindibles --simular` sigue preguntando a la
+  IA para enseñar qué propondría, pero nunca mueve nada.
+- **`buzon --demo` funciona sin `buzon init`:** si no hay `acciones.json`, usa
+  las acciones de ejemplo del paquete. Así se puede probar nada más instalar.
+  Con un `--config` que no existe sigue saliendo con código 3.
+- `docs/pruebas.md` (qué prueba cada fichero, el camino feliz y tres casos feos
+  explicados) y `docs/defensa.md` (respuestas a las preguntas de la defensa).
+- Resumen de la spec en 10 líneas al principio del README.
+
+### Cambiado
+
+- **Diseño:**
+  - `ProveedorIA` y `AccionBase` son clases abstractas (`ABC`).
+  - El HTTP de la IA vive en `ProveedorCentro`, y los proveedores falsos de los
+    tests también heredan de `ProveedorIA`.
+  - Todos los fallos de la IA, incluida una clasificación que no se entiende,
+    son `IANoDisponible`.
+  - La clave de la IA es privada (`_clave`).
+  - `construir_endpoint` es un método estático.
+- **Aserciones de desarrollo** en los puntos que no deben fallar nunca:
+  - no se mueve ningún ⭐ a la papelera;
+  - la numeración de la IA está en rango;
+  - el registro `ACCIONES` cubre todos los tipos válidos.
+- `docs/prompts.md`: sesión del 17/11 con los errores del agente y cómo se
+  detectaron.
+
 ## [1.1.1] - 2026-11-17
 
 ### Corregido
@@ -146,6 +178,7 @@ Primera versión funcional (`23b0cb2`).
   IMAP 993.
 - Hook `pre-commit` que bloquea `.env`, `credentials.json` y `token.json`.
 
+[1.2.0]: https://github.com/thebuf11/cli-buzon/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/thebuf11/cli-buzon/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/thebuf11/cli-buzon/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/thebuf11/cli-buzon/compare/v0.1.0...v1.0.0
