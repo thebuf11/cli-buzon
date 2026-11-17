@@ -32,3 +32,25 @@ def entorno_aislado(monkeypatch):
     yield
     os.environ.clear()
     os.environ.update(copia)
+
+
+@pytest.fixture
+def proveedor_falso():
+    """Un ProveedorIA de verdad (subclase de la ABC) que responde lo que digas, sin red.
+
+    Uso: ``ia = proveedor_falso("## Resumen…")``; ``ia.recibido`` guarda los mensajes.
+    """
+    from buzon.ia import ProveedorIA
+
+    class ProveedorFalso(ProveedorIA):
+        modelo = "falso"
+
+        def __init__(self, respuesta: str = "OK") -> None:
+            self.respuesta = respuesta
+            self.recibido: list = []
+
+        def completar(self, mensajes, temperatura=0.2, timeout=None):
+            self.recibido.append(mensajes)
+            return self.respuesta
+
+    return ProveedorFalso

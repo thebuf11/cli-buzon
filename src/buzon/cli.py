@@ -12,6 +12,7 @@ import sys
 import time
 from contextlib import contextmanager
 from dataclasses import replace
+from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -31,7 +32,7 @@ from .config import (
     inicializar,
 )
 from .errores import BuzonError, ConfigError, IANoDisponible, SinRedError
-from .ia import ProveedorIA
+from .ia import ProveedorCentro
 from .motor import Motor
 from .salida import LIMITE_FILAS, confirmar, mostrar_correos
 
@@ -71,6 +72,8 @@ error = Console(stderr=True)
 
 # click comparte ctx.meta entre todas las órdenes: la clave lleva el nombre del paquete.
 CLAVE_DEMO = "buzon.demo"
+# Si el usuario nombró un acciones.json (--config o BUZON_CONFIG), que no exista es un error.
+CLAVE_CONFIG_EXPLICITA = "buzon.config_explicita"
 
 
 def _demo_por_entorno() -> bool:
@@ -80,7 +83,12 @@ def _demo_por_entorno() -> bool:
 
 def _leer(ctx: typer.Context) -> Configuracion:
     """Lee acciones.json; con --demo cambia el buzón por los correos de ejemplo."""
-    config = cargar_configuracion(ctx.obj)
+    ruta = Path(ctx.obj)
+    if ctx.meta.get(CLAVE_DEMO) and not ctx.meta.get(CLAVE_CONFIG_EXPLICITA) and not ruta.exists():
+        # Recién instalado y sin «buzon init»: para probar basta con las acciones de ejemplo.
+        ruta = Path(str(files("buzon") / "plantillas" / "acciones.json"))
+        consola.print("[dim]Sin acciones.json: se usan las acciones de ejemplo (buzon init para crear las tuyas).[/dim]")
+    config = cargar_configuracion(ruta)
     if ctx.meta.get(CLAVE_DEMO):
         config = replace(config, cuenta=replace(config.cuenta, proveedor="demo"))
     return config
@@ -201,6 +209,7 @@ def principal(
     cargar_env(ruta.parent / ".env")
     ctx.obj = ruta
     ctx.meta[CLAVE_DEMO] = demo or _demo_por_entorno()
+    ctx.meta[CLAVE_CONFIG_EXPLICITA] = config is not None or bool(os.environ.get("BUZON_CONFIG", "").strip())
     if ctx.invoked_subcommand is None:
         raise typer.Exit(_flujo_por_defecto(_cargar(ctx)))
 
@@ -309,7 +318,7 @@ def comprobar_ia(ctx: typer.Context) -> None:
     """Dice si la IA está configurada y responde (no muestra la clave)."""
     config = _cargar(ctx)
     nombres = config.ia
-    proveedor = ProveedorIA.desde_entorno(config)
+    proveedor = ProveedorCentro.desde_entorno(config)
 
     ancho = max(len(n) for n in (nombres.url_env, nombres.modelo_env, nombres.clave_env, nombres.ca_env))
 
@@ -318,7 +327,7 @@ def comprobar_ia(ctx: typer.Context) -> None:
 
     fila(nombres.url_env, escape(_url_sin_secretos(proveedor.url)) or "[red]no definida[/red]")
     fila(nombres.modelo_env, escape(proveedor.modelo))
-    fila(nombres.clave_env, "[green]definida[/green] (no se muestra)" if proveedor.clave else "[dim]no definida[/dim]")
+    fila(nombres.clave_env, "[green]definida[/green] (no se muestra)" if proveedor.clave_definida else "[dim]no definida[/dim]")
     ruta_ca = proveedor.ruta_ca
     if ruta_ca is None:
         fila(nombres.ca_env, "[dim]no definido (se usan los certificados del sistema)[/dim]")

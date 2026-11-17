@@ -1,6 +1,6 @@
 [project]
 name = "cli-buzon"
-version = "1.1.1"
+version = "1.2.0"
 description = "CLI para resumir los correos importantes de las últimas 24 h y limpiar el spam de Gmail."
 readme = "README.md"
 requires-python = ">=3.12"

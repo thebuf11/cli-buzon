@@ -15,8 +15,11 @@ Este fichero recoge dos cosas:
 
 ### Primeras versiones (semanas 1-2)
 
-> *Completar a mano: prompts usados con OpenCode para crear el proyecto, el
-> validador, el cliente IMAP, la API de Gmail y `revisar` (commit `23b0cb2`).*
+Los prompts literales de esta fase no se guardaron. El trabajo hecho con
+OpenCode (proyecto con uv y Typer, el validador, el cliente IMAP, la API de
+Gmail y `revisar`) entró en un único commit (`23b0cb2`, 10/11/2026). El 12/11 el
+agente señaló que eso no contaba el proceso (ver la tabla siguiente), y desde
+entonces cada paso tiene su propio commit.
 
 ### Sesión del 12/11/2026 (Claude Code), mejoras para la entrega
 
@@ -55,6 +58,34 @@ antes de dar por bueno el trabajo. Cada fallo se reprodujo antes de arreglarlo.
 **Lección:** pasar los tests no basta. Ninguno de estos fallos lo detectaba un
 test, porque nadie había escrito el caso. La revisión de código con casos
 concretos («¿y si la etiqueta tiene paréntesis?») los encontró.
+
+### Sesión del 17/11/2026 (Claude Code): IA del centro, modo demo y nota
+
+| # | Prompt (literal) | Qué hizo el agente | Revisado o corregido |
+|---|---|---|---|
+| 1 | «No me deja ejecutar el CLI, mira por qué no funciona» | Encontró `ModuleNotFoundError: platformdirs`: la herramienta se instaló antes de que existiera esa dependencia, y `--editable` no instala las dependencias nuevas. Reinstaló con `--reinstall` | Ahora el README lo explica |
+| 2 | «Revisa esta web y dime qué más necesita mi CLI para aprobar con buena nota» | Comparó el repo con la rúbrica: faltaban ramas y PR, la instalación cruzada, aserciones y una clase abstracta | El agente preguntó si el tema (Gmail en vez de ficheros) estaba aceptado |
+| 3 | «El profesor debe poder entrar usando la IA del centro Simarro y ejecutar el programa» | Variables `CENTRO_IA_*` como en OpenCode, certificado del centro, un mensaje por cada fallo, código 4 y **modo demo** sin Gmail | El usuario eligió el modo demo frente a compartir credenciales |
+| 4 | «Créame un fichero para poder decirle a un compañero de clase que lo pruebe» | `PRUEBA-COMPANERO.md` con pasos y casillas | Se ejecutaron todos los pasos en una carpeta limpia antes de darlo por bueno |
+| 5 | «Modifica el .env tú para poder exportarlo para OpenCode» | Renombró las variables **sin mostrar ningún valor** y creó `scripts/exportar-ia.ps1` | — |
+| 6 | «Crea el subagente que pruebe la CLI en modo demo» | `.opencode/agents/probador-demo.md`, que solo puede ejecutar `buzon --demo …` | Se comprobó con `opencode debug agents` qué órdenes deja y cuáles bloquea |
+| 7 | (pegó la configuración de OpenCode del centro) | Cambió el modelo por defecto a `Qwen38-DualSpark-medium` → v1.1.1 | El `apiKey` pegado era un marcador, no la clave real |
+| 8 | «Dime qué faltaría para conseguir un 10 y qué mejorarías tú» | Clase abstracta `ProveedorIA`, `--simular` sin llamar a la IA, aserciones, `--demo` sin `init`, `docs/pruebas.md` y `docs/defensa.md` → v1.2.0 | — |
+
+**Errores del agente en esta sesión, y cómo se vieron:**
+
+| Error | Cómo se detectó |
+|---|---|
+| Puso por defecto el modelo `qwen3.8-flash-next`, que la web mencionaba pero el servidor del centro no tiene | Al ver la configuración real de OpenCode del centro |
+| Dijo que existía `opencode agent list`; en la versión 2.1.4 es `opencode debug agents` | Al ejecutarlo |
+| Un `sed` hizo que `_leer` se llamara a sí misma | Leyendo el resultado del cambio antes de probarlo |
+| Otro cambio con script metió un salto de línea dentro de una cadena de Python | Al revisar el fichero; los tests lo habrían detectado |
+| `comprobar-ia` con `http://host:abc/v1` daba una excepción sin capturar desde la 1.0.0 | El test esperaba el código 1, que es justo el que da CliRunner con una excepción sin capturar. Al cambiarlo a 4 se destapó |
+| Primera versión de `.env.example` con un servidor de ejemplo con tildes | Se vio que cada acción con IA intentaría conectarse a un servidor falso. Se dejó vacío |
+
+La revisión de código independiente encontró además 3 fallos medios (URL con
+parámetros, errores de Unicode mal clasificados y un aviso de migración
+incorrecto). Están corregidos y probados en `tests/test_ia_centro.py`.
 
 ---
 

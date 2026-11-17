@@ -9,6 +9,21 @@ si dices que sí, mueve toda la bandeja de spam a la papelera de Gmail.
 Hecha para el Proyecto 2 (CLI) del módulo de programación: Python 3.12 +
 Typer + uv, con las acciones definidas en `acciones.json` (no en el código).
 
+## Spec (resumen)
+
+1. **Para quién:** un estudiante que revisa su Gmail cada día y pierde tiempo separando spam y publicidad.
+2. **Con una orden** (`buzon`): los correos de las últimas 24 h, resumen con IA, spam y la pregunta de si se vacía.
+3. **6 acciones** en `acciones.json`: resumen, revisión uno a uno, listar spam, vaciar spam, guardar el resumen y limpieza con IA.
+4. **Acciones nuevas sin tocar el código:** se escriben en `acciones.json` y se validan con `buzon validar`.
+5. **IA del centro** (`CENTRO_IA_*` y su certificado), o cualquier servicio compatible con OpenAI.
+6. **Sin red o sin IA:** lo explica y sigue con lo que no la necesita; `comprobar-ia` sale con 4.
+7. **Nunca borra de verdad:** todo va a la papelera de Gmail, con confirmación o `--simular`, y nunca lo marcado con ⭐.
+8. **Secretos fuera de git:** `.gitignore` y un hook `pre-commit`; la clave nunca se muestra.
+9. **Para probar sin cuenta:** `--demo` usa correos de ejemplo en memoria.
+10. **Hecho cuando:** se instala con una orden, los tests pasan en Windows, Linux y macOS, y un compañero la usa siguiendo solo este README.
+
+La spec completa está en [`docs/spec.md`](docs/spec.md).
+
 ## Qué hace
 
 ```text
@@ -75,6 +90,9 @@ buzon --demo revisar                           # ver y borrar uno a uno (v 1, b 
 ¿Vas a probarla para la instalación cruzada? Sigue [`PRUEBA-COMPANERO.md`](PRUEBA-COMPANERO.md):
 es una lista de pasos con casillas y explica cómo abrir los issues.
 
+Recién instalado, `buzon --demo` funciona incluso **sin** `buzon init`: usa las
+acciones de ejemplo del paquete.
+
 Sin red o sin IA, las órdenes siguen funcionando: enseñan las tablas y explican
 por qué no hay resumen. Para no repetir `--demo`, usa `BUZON_DEMO=1` (en
 PowerShell: `$env:BUZON_DEMO=1`).
@@ -126,6 +144,11 @@ configuración en este orden:
 `.env`, `credentials.json` y `token.json` se leen de la misma carpeta que el
 `acciones.json` elegido. Con `--editable`, los cambios en el código se aplican
 sin reinstalar.
+
+> **Si al actualizar sale `ModuleNotFoundError`**, la versión nueva trae una
+> dependencia que tu instalación no tiene: `--editable` aplica los cambios de
+> código, pero no instala dependencias nuevas. Arréglalo con
+> `uv tool install --editable . --reinstall`.
 
 ## Configurar Gmail (una sola vez)
 
@@ -448,10 +471,10 @@ src/buzon/
 ├── cli.py          # interfaz Typer: órdenes, opciones, códigos de salida
 ├── config.py       # lee y VALIDA acciones.json y .env
 ├── motor.py        # Motor: ejecuta una acción sobre su carpeta
-├── acciones.py     # clases Listar, ResumenIA, ClasificarIA, MoverPapelera, Exportar, Revisar
+├── acciones.py     # AccionBase (abstracta) y Listar, ResumenIA, ClasificarIA, MoverPapelera, Exportar, Revisar
 ├── imap_client.py  # conexión IMAP + parser de correos (stdlib)
 ├── gmail_api.py    # alternativa: API REST de Gmail por HTTPS + OAuth (stdlib)
-├── ia.py           # cliente HTTP compatible con OpenAI (IA del centro + su certificado): prompts, clasificación
+├── ia.py           # ProveedorIA (abstracta) y ProveedorCentro: HTTP, certificado del centro, prompts
 ├── demo.py         # ClienteDemo: buzón de ejemplo en memoria para «--demo»
 ├── salida.py       # tablas Rich (texto de correo escapado) y confirmar() [s/N]
 ├── errores.py      # excepciones propias
@@ -467,6 +490,8 @@ Documentación del diseño:
   - 0003: capa de IA (y la IA del centro).
   - 0004: modo demo.
 - `docs/prompts.md`: cómo se ha usado la IA para programar y qué prompts envía la CLI.
+- `docs/pruebas.md`: qué cubre cada fichero de tests, el camino feliz y tres casos feos explicados.
+- `docs/defensa.md`: respuestas a las preguntas típicas de la defensa, con el fichero donde mirar.
 
 ## Limitaciones conocidas
 
