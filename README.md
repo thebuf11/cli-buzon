@@ -188,10 +188,11 @@ OpenCode**. Si ya las tienes exportadas en tu terminal (`setx` o `~/.bashrc`),
 no hace falta escribirlas en `.env`:
 
 ```dotenv
-CENTRO_IA_URL=https://<servidor-del-centro>/llmapi/v1   # la URL base, acabada en /v1
+CENTRO_IA_URL=https://ia.simarro/llmapi/v1             # la URL base, la misma que en OpenCode
 CENTRO_IA_KEY=<tu clave personal>
 CENTRO_IA_CA=~/ca-ies-simarro.crt                       # «Certificado del centro» de la plataforma
-# CENTRO_IA_MODELO=qwen3.8-flash-next                   # opcional; es el de por defecto
+# CENTRO_IA_MODELO=Qwen38-DualSpark-medium                # opcional; es el de por defecto
+#   (también Qwen38-DualSpark-low, más rápido, y -xhigh, máxima calidad)
 ```
 
 - ¿Las tienes en `.env` y quieres que OpenCode también las vea? En Windows,
@@ -214,8 +215,8 @@ Para saber si la IA está bien configurada:
 
 ```text
 $ buzon comprobar-ia
-CENTRO_IA_URL     https://ia.centro.es/…/v1
-CENTRO_IA_MODELO  qwen3.8-flash-next
+CENTRO_IA_URL     https://ia.simarro/…/v1
+CENTRO_IA_MODELO  Qwen38-DualSpark-medium
 CENTRO_IA_KEY     definida (no se muestra)
 CENTRO_IA_CA      ca-ies-simarro.crt (existe)
 OK la IA responde en 1.2 s: «OK»
@@ -338,7 +339,7 @@ OK: 2 correo(s) movidos a la papelera.
     "clave_env": "CENTRO_IA_KEY",
     "modelo_env": "CENTRO_IA_MODELO",
     "ca_env": "CENTRO_IA_CA",
-    "modelo_por_defecto": "qwen3.8-flash-next"
+    "modelo_por_defecto": "Qwen38-DualSpark-medium"
   },
   "acciones": [
     {
